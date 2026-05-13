@@ -1,17 +1,39 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { CameraView } from '@/components/camera/CameraView'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
+import { useHandTracking } from '@/hooks/useHandTracking'
 
 export default function Home() {
   const [cameraReady, setCameraReady] = useState(false)
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
+  const [showLandmarks, setShowLandmarks] = useState(true)
+
+  const { handDetection, isLoading: trackingLoading, error: trackingError, startTracking } = useHandTracking({
+    maxNumHands: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.5,
+  })
 
   const handleStreamReady = (stream: MediaStream) => {
     setCameraReady(true)
     console.log('Camera ready:', stream)
   }
+
+  const handleVideoReady = useCallback(async (video: HTMLVideoElement) => {
+    setVideoElement(video)
+    console.log('Video element ready, starting hand tracking...')
+    try {
+      await startTracking(video)
+      console.log('Hand tracking started successfully')
+    } catch (err) {
+      console.error('Failed to start hand tracking:', err)
+    }
+  }, [startTracking])
+
+  const handDetected = handDetection !== null
 
   return (
     <div className="relative w-full h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 overflow-hidden">
@@ -51,7 +73,11 @@ export default function Home() {
         <div className="flex-1 relative">
           <CameraView 
             onStreamReady={handleStreamReady}
+            onVideoReady={handleVideoReady}
             showControls={true}
+            handDetection={handDetection}
+            videoElement={videoElement}
+            showLandmarks={showLandmarks}
           />
           
           {/* Overlay UI */}
@@ -68,9 +94,14 @@ export default function Home() {
                         </svg>
                       </div>
                       <div>
-                        <h3 className="text-sm font-semibold text-white mb-1">Ready to try on watches</h3>
+                        <h3 className="text-sm font-semibold text-white mb-1">
+                          {handDetected ? 'Hand detected!' : 'Position your hand'}
+                        </h3>
                         <p className="text-xs text-zinc-400">
-                          Position your hand in front of the camera. Hand tracking will be enabled soon.
+                          {handDetected 
+                            ? `${handDetection?.handedness} hand tracked with ${(handDetection?.score || 0 * 100).toFixed(0)}% confidence`
+                            : 'Show your hand to the camera to begin tracking'
+                          }
                         </p>
                       </div>
                     </div>
@@ -83,8 +114,29 @@ export default function Home() {
                 <Card>
                   <CardBody className="py-2 px-4">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
-                      <span className="text-xs text-zinc-300 font-medium">Waiting for hand tracking</span>
+                      {trackingLoading ? (
+                        <>
+                          <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
+                          <span className="text-xs text-zinc-300 font-medium">Initializing hand tracking...</span>
+                        </>
+                      ) : trackingError ? (
+                        <>
+                          <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                          <span className="text-xs text-red-300 font-medium">Tracking error</span>
+                        </>
+                      ) : handDetected ? (
+                        <>
+                          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                          <span className="text-xs text-green-300 font-medium">
+                            Hand detected ({handDetection?.handedness})
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                          <span className="text-xs text-zinc-300 font-medium">Waiting for hand...</span>
+                        </>
+                      )}
                     </div>
                   </CardBody>
                 </Card>
@@ -95,20 +147,24 @@ export default function Home() {
                 <Card>
                   <CardBody className="py-3 px-6">
                     <div className="flex items-center gap-4">
-                      <Button variant="ghost" size="sm" disabled>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setShowLandmarks(!showLandmarks)}
+                      >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        Select Watch
+                        {showLandmarks ? 'Hide' : 'Show'} Landmarks
                       </Button>
                       
                       <div className="w-px h-6 bg-white/10"></div>
                       
                       <Button variant="ghost" size="sm" disabled>
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                         </svg>
-                        Lighting
+                        Select Watch
                       </Button>
                       
                       <div className="w-px h-6 bg-white/10"></div>
@@ -123,6 +179,37 @@ export default function Home() {
                   </CardBody>
                 </Card>
               </div>
+
+              {/* Debug Info Panel */}
+              {handDetected && handDetection && (
+                <div className="absolute bottom-24 right-6 max-w-xs">
+                  <Card>
+                    <CardBody className="py-3">
+                      <h4 className="text-xs font-semibold text-white mb-2">Key Landmarks</h4>
+                      <div className="space-y-1 text-xs font-mono">
+                        <div className="flex justify-between text-zinc-400">
+                          <span>Wrist:</span>
+                          <span>
+                            ({handDetection.landmarks.wrist.x.toFixed(3)}, {handDetection.landmarks.wrist.y.toFixed(3)})
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-zinc-400">
+                          <span>Index Base:</span>
+                          <span>
+                            ({handDetection.landmarks.indexBase.x.toFixed(3)}, {handDetection.landmarks.indexBase.y.toFixed(3)})
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-zinc-400">
+                          <span>Pinky Base:</span>
+                          <span>
+                            ({handDetection.landmarks.pinkyBase.x.toFixed(3)}, {handDetection.landmarks.pinkyBase.y.toFixed(3)})
+                          </span>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+                </div>
+              )}
             </>
           )}
 
