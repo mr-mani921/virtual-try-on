@@ -4,8 +4,27 @@
 
 This is a browser-based AR (Augmented Reality) watch try-on system built with React Three Fiber, Three.js, and Next.js. The goal is to allow users to virtually try on watches using their webcam and hand tracking.
 
-**Current Status:** Day 3 - React Three Fiber Fundamentals  
+**Current Status:** Day 4 - Browser Camera Integration  
 **Next Steps:** MediaPipe hand tracking integration, GLTF watch model loading
+
+---
+
+## Features Implemented
+
+### ✅ Day 3: React Three Fiber Fundamentals
+- WebGL rendering via React Three Fiber
+- Animated 3D scene with interactive objects
+- Orbit controls for camera manipulation
+- Lighting and materials
+- TypeScript throughout
+
+### ✅ Day 4: Browser Camera Integration
+- Webcam access via getUserMedia API
+- Camera permission handling
+- Front/rear camera switching (mobile)
+- Responsive camera viewport
+- Loading and error states
+- Mobile browser compatibility (iOS Safari, Android Chrome)
 
 ---
 
