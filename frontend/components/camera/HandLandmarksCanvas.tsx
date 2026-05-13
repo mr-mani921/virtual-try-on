@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { HandDetection } from '@/lib/mediapipe/types'
 
 interface HandLandmarksCanvasProps {
@@ -17,6 +17,9 @@ export function HandLandmarksCanvas({
   height = 720,
 }: HandLandmarksCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [fps, setFps] = useState(0)
+  const frameTimesRef = useRef<number[]>([])
+  const lastUpdateRef = useRef<number>(Date.now())
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -26,6 +29,53 @@ export function HandLandmarksCanvas({
     if (!ctx) return
 
     ctx.clearRect(0, 0, width, height)
+
+    // Calculate FPS (always, even without hand detection)
+    const now = Date.now()
+    frameTimesRef.current.push(now)
+    
+    // Keep only last second of frame times
+    frameTimesRef.current = frameTimesRef.current.filter((time: number) => now - time < 1000)
+    
+    // Update FPS display every 500ms
+    if (now - lastUpdateRef.current > 500) {
+      setFps(frameTimesRef.current.length)
+      lastUpdateRef.current = now
+    }
+
+    ctx.save()
+
+    // Draw FPS monitor at middle-right with fixed dimensions
+    const boxWidth = 240
+    const boxHeight = 90
+    const boxX = width - 320  // More to the left
+    const boxY = height / 2 - 100
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight)
+    
+    if (handDetection) {
+      // Draw hand info and FPS when hand is detected
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 16px sans-serif'
+      ctx.fillText(`Hand: ${handDetection.handedness}`, boxX + 10, boxY + 25)
+      ctx.font = '14px sans-serif'
+      ctx.fillText(`Confidence: ${(handDetection.score * 100).toFixed(1)}%`, boxX + 10, boxY + 50)
+      
+      // Draw FPS with color coding
+      const fpsColor = fps >= 30 ? '#10b981' : fps >= 15 ? '#f59e0b' : '#ef4444'
+      ctx.fillStyle = fpsColor
+      ctx.font = 'bold 14px sans-serif'
+      ctx.fillText(`FPS: ${fps}`, boxX + 10, boxY + 75)
+    } else {
+      // Draw FPS only when no hand detected
+      const fpsColor = fps >= 30 ? '#10b981' : fps >= 15 ? '#f59e0b' : '#ef4444'
+      ctx.fillStyle = fpsColor
+      ctx.font = 'bold 18px sans-serif'
+      ctx.fillText(`FPS: ${fps}`, boxX + 10, boxY + 50)
+    }
+
+    ctx.restore()
 
     if (!handDetection || !videoElement) return
 
@@ -95,17 +145,8 @@ export function HandLandmarksCanvas({
       ctx.stroke()
     })
 
-    // Draw handedness label
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
-    ctx.fillRect(10, 10, 200, 60)
-    ctx.fillStyle = '#ffffff'
-    ctx.font = 'bold 16px sans-serif'
-    ctx.fillText(`Hand: ${handDetection.handedness}`, 20, 35)
-    ctx.font = '14px sans-serif'
-    ctx.fillText(`Confidence: ${(handDetection.score * 100).toFixed(1)}%`, 20, 55)
-
     ctx.restore()
-  }, [handDetection, videoElement, width, height])
+  }, [handDetection, videoElement, width, height, fps])
 
   return (
     <canvas
