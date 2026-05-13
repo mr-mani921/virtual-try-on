@@ -4,8 +4,8 @@
 
 This is a browser-based AR (Augmented Reality) watch try-on system built with React Three Fiber, Three.js, and Next.js. The goal is to allow users to virtually try on watches using their webcam and hand tracking.
 
-**Current Status:** Day 4 - Professional UI & Camera Integration  
-**Next Steps:** MediaPipe hand tracking integration, GLTF watch model loading
+**Current Status:** Day 5 - MediaPipe Hands Integration Complete  
+**Next Steps:** 3D watch model positioning on wrist, coordinate mapping
 
 ---
 
@@ -29,7 +29,24 @@ This is a browser-based AR (Augmented Reality) watch try-on system built with Re
 - **Modern glassmorphism design**
 - **Intuitive AR interface**
 
+### ✅ Day 5: MediaPipe Hands Integration
+- Real-time hand detection in browser
+- Single hand tracking (optimized for watch try-on)
+- 21 landmark detection per hand
+- Key landmark extraction (wrist, index base, pinky base)
+- Handedness detection (Left/Right)
+- Visual debugging with canvas overlay
+- Confidence scoring
+- Dynamic MediaPipe loading (client-side only)
+- Mobile-optimized performance
+
 ---
+
+## Documentation
+
+- **[README.md](./README.md)** - Project overview and R3F architecture
+- **[DOCUMENTATION.md](./DOCUMENTATION.md)** - Complete technical guide (Days 1-4)
+- **[MEDIAPIPE_INTEGRATION.md](./MEDIAPIPE_INTEGRATION.md)** - MediaPipe Hands integration guide (Day 5)
 
 ## Pages
 
