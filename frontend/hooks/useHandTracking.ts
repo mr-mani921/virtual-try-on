@@ -32,12 +32,15 @@ export function useHandTracking(
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [handDetection, setHandDetection] = useState<HandDetection | null>(null)
+  const [isInitialized, setIsInitialized] = useState(false)
 
   const handsRef = useRef<any>(null)
   const cameraRef = useRef<any>(null)
   const animationFrameRef = useRef<number | null>(null)
 
   const stopTracking = useCallback(() => {
+    console.log('Stopping hand tracking...')
+    
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current)
       animationFrameRef.current = null
@@ -52,13 +55,24 @@ export function useHandTracking(
       handsRef.current.close()
       handsRef.current = null
     }
+
+    setIsInitialized(false)
+    setHandDetection(null)
   }, [])
 
   const startTracking = useCallback(
     async (videoElement: HTMLVideoElement) => {
+      if (isInitialized || handsRef.current) {
+        console.log('Hand tracking already initialized, skipping...')
+        return
+      }
+
       try {
         setIsLoading(true)
         setError(null)
+        setIsInitialized(true)
+
+        console.log('Initializing MediaPipe Hands...')
 
         // Dynamically import MediaPipe (client-side only)
         const { Hands } = await import('@mediapipe/hands')
@@ -119,13 +133,16 @@ export function useHandTracking(
         await camera.start()
 
         setIsLoading(false)
+        console.log('MediaPipe Hands initialized successfully')
       } catch (err) {
         const error = err as Error
+        console.error('MediaPipe initialization error:', error)
         setError(error.message || 'Failed to initialize hand tracking')
         setIsLoading(false)
+        setIsInitialized(false)
       }
     },
-    [maxNumHands, minDetectionConfidence, minTrackingConfidence, onHandDetected]
+    [maxNumHands, minDetectionConfidence, minTrackingConfidence, onHandDetected, isInitialized]
   )
 
   useEffect(() => {

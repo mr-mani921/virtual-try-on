@@ -17,13 +17,14 @@ export function CameraStream({
 }: CameraStreamProps) {
   const videoRef = useRef<HTMLVideoElement>(null!)
   const streamRef = useRef<MediaStream | null>(null)
+  const videoReadyCalledRef = useRef(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
 
   // Assign stream to video element when both are ready
   useEffect(() => {
-    if (streamRef.current && videoRef.current && !isLoading) {
+    if (streamRef.current && videoRef.current && !isLoading && !videoReadyCalledRef.current) {
       videoRef.current.srcObject = streamRef.current
       
       console.log('Stream assigned to video element', {
@@ -37,17 +38,20 @@ export function CameraStream({
         videoRef.current?.play()
           .then(() => {
             console.log('Video playing')
-            if (videoRef.current) {
+            if (videoRef.current && !videoReadyCalledRef.current) {
+              videoReadyCalledRef.current = true
               onVideoReady?.(videoRef.current)
             }
           })
           .catch(err => console.warn('Video play failed:', err))
       }
     }
-  }, [isLoading, onVideoReady])
+  }, [isLoading])
 
   useEffect(() => {
     let mounted = true
+    const onStreamReadyRef = onStreamReady
+    const onErrorRef = onError
 
     const startCamera = async () => {
       try {
@@ -77,7 +81,7 @@ export function CameraStream({
         streamRef.current = stream
         setHasPermission(true)
         setIsLoading(false)
-        onStreamReady?.(stream)
+        onStreamReadyRef?.(stream)
       } catch (err) {
         if (!mounted) return
 
@@ -97,7 +101,7 @@ export function CameraStream({
 
         setError(errorMessage)
         setIsLoading(false)
-        onError?.(new Error(errorMessage))
+        onErrorRef?.(new Error(errorMessage))
       }
     }
 
@@ -107,11 +111,13 @@ export function CameraStream({
     return () => {
       mounted = false
       if (streamRef.current) {
+        console.log('Cleaning up camera stream')
         streamRef.current.getTracks().forEach(track => track.stop())
         streamRef.current = null
       }
+      videoReadyCalledRef.current = false
     }
-  }, [facingMode, onStreamReady, onError])
+  }, [facingMode])
 
   if (error) {
     return (

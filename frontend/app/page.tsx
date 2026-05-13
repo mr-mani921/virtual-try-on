@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { CameraView } from '@/components/camera/CameraView'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -10,6 +10,7 @@ export default function Home() {
   const [cameraReady, setCameraReady] = useState(false)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [showLandmarks, setShowLandmarks] = useState(true)
+  const handTrackingStartedRef = useRef(false)
 
   const { handDetection, isLoading: trackingLoading, error: trackingError, startTracking } = useHandTracking({
     maxNumHands: 1,
@@ -17,20 +18,24 @@ export default function Home() {
     minTrackingConfidence: 0.5,
   })
 
-  const handleStreamReady = (stream: MediaStream) => {
+  const handleStreamReady = useCallback((stream: MediaStream) => {
     setCameraReady(true)
     console.log('Camera ready:', stream)
-  }
+  }, [])
 
-  const handleVideoReady = useCallback(async (video: HTMLVideoElement) => {
-    setVideoElement(video)
-    console.log('Video element ready, starting hand tracking...')
-    try {
-      await startTracking(video)
-      console.log('Hand tracking started successfully')
-    } catch (err) {
-      console.error('Failed to start hand tracking:', err)
+  const handleVideoReady = useCallback((video: HTMLVideoElement) => {
+    if (handTrackingStartedRef.current) {
+      console.log('Hand tracking already started, skipping...')
+      return
     }
+    
+    setVideoElement(video)
+    handTrackingStartedRef.current = true
+    
+    console.log('Video element ready, starting hand tracking...')
+    startTracking(video)
+      .then(() => console.log('Hand tracking started successfully'))
+      .catch(err => console.error('Failed to start hand tracking:', err))
   }, [startTracking])
 
   const handDetected = handDetection !== null
