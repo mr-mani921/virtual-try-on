@@ -6,12 +6,14 @@ interface CameraStreamProps {
   facingMode?: 'user' | 'environment'
   onStreamReady?: (stream: MediaStream) => void
   onError?: (error: Error) => void
+  onVideoReady?: (video: HTMLVideoElement) => void
 }
 
 export function CameraStream({ 
   facingMode = 'user',
   onStreamReady,
-  onError 
+  onError,
+  onVideoReady,
 }: CameraStreamProps) {
   const videoRef = useRef<HTMLVideoElement>(null!)
   const streamRef = useRef<MediaStream | null>(null)
@@ -33,11 +35,16 @@ export function CameraStream({
       videoRef.current.onloadedmetadata = () => {
         console.log('Video metadata loaded')
         videoRef.current?.play()
-          .then(() => console.log('Video playing'))
+          .then(() => {
+            console.log('Video playing')
+            if (videoRef.current) {
+              onVideoReady?.(videoRef.current)
+            }
+          })
           .catch(err => console.warn('Video play failed:', err))
       }
     }
-  }, [isLoading])
+  }, [isLoading, onVideoReady])
 
   useEffect(() => {
     let mounted = true
