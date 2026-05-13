@@ -3,10 +3,11 @@
 import { Canvas } from '@react-three/fiber'
 import { Scene } from '@/components/canvas/Scene'
 import { CameraControls } from '@/components/canvas/CameraControls'
+import Link from 'next/link'
 
 export default function Home() {
   return (
-    <div className="w-full h-screen bg-zinc-900">
+    <div className="w-full h-screen bg-zinc-900 relative">
       <Canvas
         camera={{ fov: 75, near: 0.1, far: 1000, position: [0, 0, 5] }}
         gl={{ antialias: true }}
@@ -14,6 +15,16 @@ export default function Home() {
         <Scene />
         <CameraControls />
       </Canvas>
+      
+      {/* Navigation */}
+      <div className="absolute top-4 right-4 z-10">
+        <Link 
+          href="/camera-test"
+          className="bg-white/90 hover:bg-white text-zinc-900 px-4 py-2 rounded-lg shadow-lg transition-all text-sm font-medium"
+        >
+          Test Camera →
+        </Link>
+      </div>
     </div>
   )
 }
