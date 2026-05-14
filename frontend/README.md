@@ -4,8 +4,8 @@
 
 This is a browser-based AR (Augmented Reality) watch try-on system built with React Three Fiber, Three.js, and Next.js. The goal is to allow users to virtually try on watches using their webcam and hand tracking.
 
-**Current Status:** Ticket 3A Complete - Landmark Debugging System  
-**Next Steps:** 3D watch model positioning on wrist, coordinate mapping
+**Current Status:** Ticket 4 Complete - Coordinate Mapping System  
+**Next Steps:** 3D watch model loading and positioning on wrist
 
 ---
 
@@ -48,6 +48,15 @@ This is a browser-based AR (Augmented Reality) watch try-on system built with Re
 - Detection confidence logs in overlay
 - Real-time performance monitoring
 
+### ✅ Ticket 4: Coordinate Mapping System
+- Convert MediaPipe normalized coordinates (0-1) to screen space pixels
+- Map screen space to Three.js world coordinates using camera projection
+- Reusable coordinate transformation utilities
+- Hand orientation calculation from landmarks
+- Smooth coordinate transitions with lerp
+- Debug visualization in 3D scene
+- Split-view debug page showing 2D tracking and 3D mapping side-by-side
+
 ---
 
 ## Documentation
@@ -55,6 +64,7 @@ This is a browser-based AR (Augmented Reality) watch try-on system built with Re
 - **[README.md](./README.md)** - Project overview and R3F architecture
 - **[DOCUMENTATION.md](./DOCUMENTATION.md)** - Complete technical guide (Days 1-4)
 - **[MEDIAPIPE_INTEGRATION.md](./MEDIAPIPE_INTEGRATION.md)** - MediaPipe Hands integration guide (Day 5)
+- **[COORDINATE_MAPPING.md](./COORDINATE_MAPPING.md)** - Coordinate transformation system deep dive (Ticket 4)
 
 ## Pages
 
@@ -62,6 +72,7 @@ This is a browser-based AR (Augmented Reality) watch try-on system built with Re
 - **/3d-demo** - React Three Fiber demo
 - **/camera-test** - Camera integration test
 - **/camera-debug** - Camera debugging
+- **/coordinate-debug** - Coordinate mapping visualization (split-view: 2D tracking + 3D world space)
 
 ---
 
