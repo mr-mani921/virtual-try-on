@@ -4,8 +4,8 @@
 
 This is a browser-based AR (Augmented Reality) watch try-on system built with React Three Fiber, Three.js, and Next.js. The goal is to allow users to virtually try on watches using their webcam and hand tracking.
 
-**Current Status:** Ticket 6 Complete - Watch Model Pipeline  
-**Next Steps:** Fine-tune watch positioning and add multiple watch models
+**Current Status:** Ticket 8 Complete - Dynamic Scaling System  
+**Next Steps:** Multiple watch models and watch selection UI
 
 ---
 
@@ -87,6 +87,48 @@ This is a browser-based AR (Augmented Reality) watch try-on system built with Re
 - ModelInspector component for debugging
 - Production-ready asset pipeline with model preloading
 
+### ✅ Ticket 7: Watch Attachment Integration
+- Replaced placeholder cube with actual watch model
+- Configurable position offsets (X, Y, Z axes)
+- Configurable rotation offsets (Pitch, Yaw, Roll)
+- Handedness-based flipping (automatic mirroring for left hand)
+- Watch configuration hook (`useWatchConfig`) with:
+  - Scale adjustment
+  - Position offset controls
+  - Rotation offset controls
+  - Smoothing factor
+  - Preset system (Default, Sports, Luxury, Smart)
+- WatchControls UI component with:
+  - Preset selection buttons
+  - Real-time sliders for all parameters
+  - Visual feedback with color-coded axes
+  - Reset to default button
+- Fine-tuned watch placement on wrist
+- Smooth real-time tracking with configurable responsiveness
+
+### ✅ Ticket 8: Dynamic Scaling System
+- Automatic watch size adjustment based on hand width
+- Camera distance compensation (near/far movement)
+- Hand width calculation from index and pinky base landmarks
+- Average depth calculation from key landmarks
+- Scale normalization with reference values
+- Jump prevention with smoothing buffer (moving average)
+- Configurable min/max scale limits (0.8 to 3.0)
+- Stability detection (variance-based)
+- `useDynamicScale` hook with:
+  - Hand width tracking
+  - Depth tracking
+  - Dynamic scale calculation
+  - Smoothing with lerp
+  - Stability status
+- Real-time info panel showing:
+  - Current dynamic scale
+  - Hand width measurement
+  - Average depth
+  - Stability status
+- Toggle to enable/disable dynamic scaling
+- Enabled by default in main AR page
+
 ---
 
 ## Documentation
@@ -95,6 +137,7 @@ This is a browser-based AR (Augmented Reality) watch try-on system built with Re
 - **[DOCUMENTATION.md](./DOCUMENTATION.md)** - Complete technical guide (Days 1-4)
 - **[MEDIAPIPE_INTEGRATION.md](./MEDIAPIPE_INTEGRATION.md)** - MediaPipe Hands integration guide (Day 5)
 - **[COORDINATE_MAPPING.md](./COORDINATE_MAPPING.md)** - Coordinate transformation system deep dive (Ticket 4)
+- **[WATCH_MODEL_PIPELINE.md](./WATCH_MODEL_PIPELINE.md)** - Watch model loading and optimization guide (Ticket 6)
 
 ## Pages
 
