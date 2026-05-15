@@ -8,10 +8,12 @@ import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
 import { useHandTracking } from '@/hooks/useHandTracking'
 import { useCoordinateMapping } from '@/hooks/useCoordinateMapping'
+import { useWatchConfig } from '@/hooks/useWatchConfig'
 import { HandDebugVisualizer } from '@/components/canvas/HandDebugVisualizer'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
 import { WatchModel } from '@/components/canvas/WatchModel'
 import { ModelInspector } from '@/components/canvas/ModelInspector'
+import { WatchControls } from '@/components/ui/WatchControls'
 import Link from 'next/link'
 
 function CoordinateDebugScene({ 
@@ -19,13 +21,15 @@ function CoordinateDebugScene({
   showWristAnchor,
   showWatchModel,
   showDebugAxis,
-  watchScale
+  watchConfig,
+  handedness
 }: { 
   showVisualizer: boolean
   showWristAnchor: boolean
   showWatchModel: boolean
   showDebugAxis: boolean
-  watchScale: number
+  watchConfig: any
+  handedness: 'Left' | 'Right'
 }) {
   const { camera } = useThree()
   const [handDetection, setHandDetection] = useState<any>(null)
@@ -78,8 +82,11 @@ function CoordinateDebugScene({
         <WatchModel
           wristPosition={mappedData.wristPosition}
           handOrientation={mappedData.handOrientation}
-          smoothing={0.3}
-          scale={watchScale}
+          handedness={handedness}
+          smoothing={watchConfig.smoothing}
+          scale={watchConfig.scale}
+          positionOffset={watchConfig.positionOffset}
+          rotationOffset={watchConfig.rotationOffset}
           showDebugAxis={showDebugAxis}
         />
       )}
@@ -104,8 +111,11 @@ export default function CoordinateDebugPage() {
   const [showDebugAxis, setShowDebugAxis] = useState(false)
   const [showGrid, setShowGrid] = useState(true)
   const [showCoordinates, setShowCoordinates] = useState(true)
-  const [watchScale, setWatchScale] = useState(0.5)
+  const [showWatchControls, setShowWatchControls] = useState(true)
   const handTrackingStartedRef = useRef(false)
+
+  // Watch configuration hook
+  const watchConfig = useWatchConfig('default')
 
   const { handDetection, isLoading, error, startTracking } = useHandTracking({
     maxNumHands: 1,
@@ -297,7 +307,8 @@ export default function CoordinateDebugPage() {
               showWristAnchor={showWristAnchor}
               showWatchModel={showWatchModel}
               showDebugAxis={showDebugAxis}
-              watchScale={watchScale}
+              watchConfig={watchConfig.config}
+              handedness={handDetection?.handedness || 'Right'}
             />
           </Canvas>
           
@@ -375,19 +386,15 @@ export default function CoordinateDebugPage() {
 
                   <div className="w-full h-px bg-white/10"></div>
 
-                  {/* Scale Slider */}
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-zinc-400">Watch Scale: {watchScale.toFixed(2)}</label>
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="2"
-                      step="0.1"
-                      value={watchScale}
-                      onChange={(e) => setWatchScale(parseFloat(e.target.value))}
-                      className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                    />
-                  </div>
+                  <button
+                    onClick={() => setShowWatchControls(!showWatchControls)}
+                    className="flex items-center justify-between gap-3 text-xs text-white hover:text-purple-400 transition-colors"
+                  >
+                    <span>Watch Controls</span>
+                    <div className={`w-8 h-4 rounded-full transition-colors ${showWatchControls ? 'bg-purple-500' : 'bg-zinc-600'} relative`}>
+                      <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${showWatchControls ? 'translate-x-4' : 'translate-x-0.5'}`}></div>
+                    </div>
+                  </button>
                 </div>
               </CardBody>
             </Card>
@@ -449,6 +456,22 @@ export default function CoordinateDebugPage() {
               </CardBody>
             </Card>
           </div>
+
+          {/* Watch Controls Panel */}
+          {showWatchControls && (
+            <div className="absolute top-20 left-4 max-w-xs max-h-[calc(100vh-200px)] overflow-y-auto">
+              <WatchControls
+                config={watchConfig.config}
+                onScaleChange={watchConfig.updateScale}
+                onPositionChange={watchConfig.updatePositionOffset}
+                onRotationChange={watchConfig.updateRotationOffset}
+                onSmoothingChange={watchConfig.updateSmoothing}
+                onReset={watchConfig.resetToDefault}
+                onLoadPreset={watchConfig.loadPreset}
+                presets={watchConfig.presets}
+              />
+            </div>
+          )}
 
           {/* Instructions */}
           <div className="absolute bottom-4 left-4">

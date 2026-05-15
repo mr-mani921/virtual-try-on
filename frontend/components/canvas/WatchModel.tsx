@@ -10,8 +10,11 @@ import { lerpWorldCoordinates } from '@/lib/three/coordinateMapping'
 interface WatchModelProps {
   wristPosition: WorldCoordinates | null
   handOrientation?: THREE.Euler | null
+  handedness?: 'Left' | 'Right'
   smoothing?: number
   scale?: number
+  positionOffset?: { x: number; y: number; z: number }
+  rotationOffset?: { x: number; y: number; z: number }
   showDebugAxis?: boolean
   modelPath?: string
 }
@@ -19,8 +22,11 @@ interface WatchModelProps {
 export function WatchModel({
   wristPosition,
   handOrientation,
+  handedness = 'Right',
   smoothing = 0.3,
   scale = 1,
+  positionOffset = { x: 0, y: 0, z: 0 },
+  rotationOffset = { x: 0, y: 0, z: 0 },
   showDebugAxis = false,
   modelPath = '/models/watch.glb',
 }: WatchModelProps) {
@@ -55,8 +61,18 @@ export function WatchModel({
     // Apply normalized scale
     clonedScene.scale.setScalar(normalizedScale * scale)
 
-    // Adjust rotation to align with wrist orientation
-    clonedScene.rotation.set(0, 0, 0)
+    // Apply rotation offset for watch orientation
+    clonedScene.rotation.set(
+      rotationOffset.x,
+      rotationOffset.y,
+      rotationOffset.z
+    )
+
+    // Apply handedness-based flipping
+    if (handedness === 'Left') {
+      // Mirror the watch for left hand
+      clonedScene.scale.x *= -1
+    }
 
     // Optimize materials and enable shadows
     clonedScene.traverse((child) => {
@@ -87,7 +103,7 @@ export function WatchModel({
     })
 
     return clonedScene
-  }, [scene, scale])
+  }, [scene, scale, rotationOffset, handedness])
 
   useEffect(() => {
     if (processedModel && modelRef.current) {
@@ -104,8 +120,15 @@ export function WatchModel({
   useFrame(() => {
     if (!groupRef.current || !wristPosition) return
 
+    // Apply position offset
+    const offsetPosition = {
+      x: wristPosition.x + positionOffset.x,
+      y: wristPosition.y + positionOffset.y,
+      z: wristPosition.z + positionOffset.z,
+    }
+
     // Smooth position transition
-    const targetPosition = wristPosition
+    const targetPosition = offsetPosition
     const smoothedPosition = currentPosition
       ? lerpWorldCoordinates(currentPosition, targetPosition, smoothing)
       : targetPosition

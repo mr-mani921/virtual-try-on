@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
 import { useHandTracking } from '@/hooks/useHandTracking'
 import { useCoordinateMapping } from '@/hooks/useCoordinateMapping'
+import { useWatchConfig } from '@/hooks/useWatchConfig'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
 import { WatchModel } from '@/components/canvas/WatchModel'
 import Link from 'next/link'
@@ -14,11 +15,13 @@ import Link from 'next/link'
 function ARScene({ 
   showWristAnchor, 
   showWatchModel,
-  watchScale 
+  watchConfig,
+  handedness
 }: { 
   showWristAnchor: boolean
   showWatchModel: boolean
-  watchScale: number
+  watchConfig: any
+  handedness: 'Left' | 'Right'
 }) {
   const { camera } = useThree()
   const [handDetection, setHandDetection] = useState<any>(null)
@@ -48,8 +51,11 @@ function ARScene({
         <WatchModel
           wristPosition={mappedData.wristPosition}
           handOrientation={mappedData.handOrientation}
-          smoothing={0.3}
-          scale={watchScale}
+          handedness={handedness}
+          smoothing={watchConfig.smoothing}
+          scale={watchConfig.scale}
+          positionOffset={watchConfig.positionOffset}
+          rotationOffset={watchConfig.rotationOffset}
           showDebugAxis={false}
         />
       )}
@@ -67,8 +73,10 @@ export default function Home() {
   const [showLandmarks, setShowLandmarks] = useState(true)
   const [showWristAnchor, setShowWristAnchor] = useState(false)
   const [showWatchModel, setShowWatchModel] = useState(true)
-  const [watchScale, setWatchScale] = useState(0.5)
   const handTrackingStartedRef = useRef(false)
+
+  // Watch configuration hook
+  const watchConfig = useWatchConfig('default')
 
   const { handDetection, isLoading: trackingLoading, error: trackingError, startTracking } = useHandTracking({
     maxNumHands: 1,
@@ -184,7 +192,8 @@ export default function Home() {
                 <ARScene 
                   showWristAnchor={showWristAnchor} 
                   showWatchModel={showWatchModel}
-                  watchScale={watchScale}
+                  watchConfig={watchConfig.config}
+                  handedness={handDetection?.handedness || 'Right'}
                 />
               </Canvas>
             </div>
