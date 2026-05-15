@@ -1,21 +1,63 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef } from 'react'
+import { Canvas, useThree } from '@react-three/fiber'
 import { CameraView } from '@/components/camera/CameraView'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
 import { useHandTracking } from '@/hooks/useHandTracking'
+import { useCoordinateMapping } from '@/hooks/useCoordinateMapping'
+import { WristAnchor } from '@/components/canvas/WristAnchor'
+import Link from 'next/link'
+
+function ARScene({ showWristAnchor }: { showWristAnchor: boolean }) {
+  const { camera } = useThree()
+  const [handDetection, setHandDetection] = useState<any>(null)
+  
+  const mappedData = useCoordinateMapping(handDetection, camera, {
+    videoWidth: 1280,
+    videoHeight: 720,
+    flipHorizontal: false,
+  })
+
+  if (typeof window !== 'undefined') {
+    ;(window as any).__setHandDetectionAR = setHandDetection
+  }
+
+  return (
+    <>
+      {showWristAnchor && mappedData && (
+        <WristAnchor
+          wristPosition={mappedData.wristPosition}
+          handOrientation={mappedData.handOrientation}
+          smoothing={0.3}
+          showDebugAxis={false}
+        />
+      )}
+      
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[5, 5, 5]} intensity={1.2} castShadow />
+      <pointLight position={[-5, 3, -5]} intensity={0.5} />
+    </>
+  )
+}
 
 export default function Home() {
   const [cameraReady, setCameraReady] = useState(false)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [showLandmarks, setShowLandmarks] = useState(true)
+  const [showWristAnchor, setShowWristAnchor] = useState(true)
   const handTrackingStartedRef = useRef(false)
 
   const { handDetection, isLoading: trackingLoading, error: trackingError, startTracking } = useHandTracking({
     maxNumHands: 1,
     minDetectionConfidence: 0.7,
     minTrackingConfidence: 0.5,
+    onHandDetected: (hand) => {
+      if (typeof window !== 'undefined' && (window as any).__setHandDetectionAR) {
+        ;(window as any).__setHandDetectionAR(hand)
+      }
+    },
   })
 
   const handleStreamReady = useCallback((stream: MediaStream) => {
@@ -70,12 +112,21 @@ export default function Home() {
                   <span className="text-xs text-green-400 font-medium">Camera Active</span>
                 </div>
               )}
+              <Link href="/coordinate-debug">
+                <Button variant="ghost" size="sm">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                  Debug
+                </Button>
+              </Link>
             </div>
           </div>
         </header>
 
         {/* Camera View */}
         <div className="flex-1 relative">
+          {/* Video Stream */}
           <CameraView 
             onStreamReady={handleStreamReady}
             onVideoReady={handleVideoReady}
@@ -84,6 +135,35 @@ export default function Home() {
             videoElement={videoElement}
             showLandmarks={showLandmarks}
           />
+
+          {/* 3D AR Overlay */}
+          {cameraReady && (
+            <div className="absolute inset-0 pointer-events-none">
+              <Canvas
+                camera={{ 
+                  fov: 75, 
+                  near: 0.1, 
+                  far: 1000, 
+                  position: [0, 0, 0] 
+                }}
+                gl={{ 
+                  antialias: true,
+                  alpha: true,
+                  preserveDrawingBuffer: true
+                }}
+                style={{ 
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  pointerEvents: 'none'
+                }}
+              >
+                <ARScene showWristAnchor={showWristAnchor} />
+              </Canvas>
+            </div>
+          )}
           
           {/* Overlay UI */}
           {cameraReady && (
@@ -108,6 +188,12 @@ export default function Home() {
                             : 'Show your hand to the camera to begin tracking'
                           }
                         </p>
+                        {handDetected && showWristAnchor && (
+                          <div className="mt-2 flex items-center gap-2 text-xs text-purple-400">
+                            <div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></div>
+                            <span>Watch anchor active</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </CardBody>
@@ -152,6 +238,19 @@ export default function Home() {
                 <Card>
                   <CardBody className="py-3 px-6">
                     <div className="flex items-center gap-4">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setShowWristAnchor(!showWristAnchor)}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        </svg>
+                        {showWristAnchor ? 'Hide' : 'Show'} Watch
+                      </Button>
+
+                      <div className="w-px h-6 bg-white/10"></div>
+                      
                       <Button 
                         variant="ghost" 
                         size="sm" 

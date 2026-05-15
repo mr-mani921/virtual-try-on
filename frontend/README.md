@@ -4,8 +4,8 @@
 
 This is a browser-based AR (Augmented Reality) watch try-on system built with React Three Fiber, Three.js, and Next.js. The goal is to allow users to virtually try on watches using their webcam and hand tracking.
 
-**Current Status:** Ticket 4 Complete - Coordinate Mapping System  
-**Next Steps:** 3D watch model loading and positioning on wrist
+**Current Status:** Ticket 5 Complete - Wrist Anchor Attachment  
+**Next Steps:** Watch model loading and realistic rendering
 
 ---
 
@@ -56,6 +56,16 @@ This is a browser-based AR (Augmented Reality) watch try-on system built with Re
 - Smooth coordinate transitions with lerp
 - Debug visualization in 3D scene
 - Split-view debug page showing 2D tracking and 3D mapping side-by-side
+
+### ✅ Ticket 5: Wrist Anchor Attachment
+- Placeholder cube attached to wrist position
+- Real-time position tracking with smooth transitions
+- Hand orientation following (rotation based on wrist/index/pinky)
+- Configurable smoothing factor (lerp-based)
+- Debug axis helper for orientation visualization
+- Purple metallic cube with glow effect
+- Red anchor point indicator at wrist center
+- Subtle floating animation for visual feedback
 
 ---
 

@@ -9,9 +9,18 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { useHandTracking } from '@/hooks/useHandTracking'
 import { useCoordinateMapping } from '@/hooks/useCoordinateMapping'
 import { HandDebugVisualizer } from '@/components/canvas/HandDebugVisualizer'
+import { WristAnchor } from '@/components/canvas/WristAnchor'
 import Link from 'next/link'
 
-function CoordinateDebugScene({ showVisualizer }: { showVisualizer: boolean }) {
+function CoordinateDebugScene({ 
+  showVisualizer, 
+  showWristAnchor,
+  showDebugAxis 
+}: { 
+  showVisualizer: boolean
+  showWristAnchor: boolean
+  showDebugAxis: boolean
+}) {
   const { camera } = useThree()
   const [handDetection, setHandDetection] = useState<any>(null)
   
@@ -45,6 +54,15 @@ function CoordinateDebugScene({ showVisualizer }: { showVisualizer: boolean }) {
           showConnections={true}
         />
       )}
+
+      {showWristAnchor && mappedData && (
+        <WristAnchor
+          wristPosition={mappedData.wristPosition}
+          handOrientation={mappedData.handOrientation}
+          smoothing={0.3}
+          showDebugAxis={showDebugAxis}
+        />
+      )}
       
       <OrbitControls 
         enableDamping
@@ -61,6 +79,8 @@ export default function CoordinateDebugPage() {
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [showLandmarks, setShowLandmarks] = useState(true)
   const [showVisualizer, setShowVisualizer] = useState(true)
+  const [showWristAnchor, setShowWristAnchor] = useState(true)
+  const [showDebugAxis, setShowDebugAxis] = useState(false)
   const [showGrid, setShowGrid] = useState(true)
   const [showCoordinates, setShowCoordinates] = useState(true)
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
@@ -263,7 +283,11 @@ export default function CoordinateDebugPage() {
             gl={{ antialias: true }}
             shadows
           >
-            <CoordinateDebugScene showVisualizer={showVisualizer} />
+            <CoordinateDebugScene 
+              showVisualizer={showVisualizer} 
+              showWristAnchor={showWristAnchor}
+              showDebugAxis={showDebugAxis}
+            />
           </Canvas>
           
           {/* 3D Label */}
@@ -287,15 +311,37 @@ export default function CoordinateDebugPage() {
               <CardBody className="py-2 px-3">
                 <div className="flex flex-col gap-2">
                   <button
+                    onClick={() => setShowWristAnchor(!showWristAnchor)}
+                    className="flex items-center justify-between gap-3 text-xs text-white hover:text-purple-400 transition-colors"
+                  >
+                    <span className="font-semibold">Wrist Anchor</span>
+                    <div className={`w-8 h-4 rounded-full transition-colors ${showWristAnchor ? 'bg-purple-500' : 'bg-zinc-600'} relative`}>
+                      <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${showWristAnchor ? 'translate-x-4' : 'translate-x-0.5'}`}></div>
+                    </div>
+                  </button>
+
+                  <div className="w-full h-px bg-white/10"></div>
+                  
+                  <button
                     onClick={() => setShowVisualizer(!showVisualizer)}
                     className="flex items-center justify-between gap-3 text-xs text-white hover:text-purple-400 transition-colors"
                   >
-                    <span>3D Visualizer</span>
+                    <span>Landmarks</span>
                     <div className={`w-8 h-4 rounded-full transition-colors ${showVisualizer ? 'bg-purple-500' : 'bg-zinc-600'} relative`}>
                       <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${showVisualizer ? 'translate-x-4' : 'translate-x-0.5'}`}></div>
                     </div>
                   </button>
                   
+                  <button
+                    onClick={() => setShowDebugAxis(!showDebugAxis)}
+                    className="flex items-center justify-between gap-3 text-xs text-white hover:text-purple-400 transition-colors"
+                  >
+                    <span>Debug Axis</span>
+                    <div className={`w-8 h-4 rounded-full transition-colors ${showDebugAxis ? 'bg-purple-500' : 'bg-zinc-600'} relative`}>
+                      <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${showDebugAxis ? 'translate-x-4' : 'translate-x-0.5'}`}></div>
+                    </div>
+                  </button>
+
                   <button
                     onClick={() => setShowGrid(!showGrid)}
                     className="flex items-center justify-between gap-3 text-xs text-white hover:text-purple-400 transition-colors"
@@ -318,24 +364,36 @@ export default function CoordinateDebugPage() {
                   <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
                   </svg>
-                  Landmark Colors
+                  Visual Elements
                 </h4>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50"></div>
-                    <span className="text-zinc-300">Wrist (Anchor)</span>
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-xs text-zinc-400 mb-1">Wrist Anchor:</p>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="w-4 h-3 bg-purple-500 rounded shadow-lg shadow-purple-500/50"></div>
+                      <span className="text-zinc-300">Watch Placeholder</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-green-500 shadow-lg shadow-green-500/50"></div>
-                    <span className="text-zinc-300">Index Base</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-orange-500 shadow-lg shadow-orange-500/50"></div>
-                    <span className="text-zinc-300">Pinky Base</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-blue-400 shadow-lg shadow-blue-400/50"></div>
-                    <span className="text-zinc-300">All Landmarks (21)</span>
+                  <div className="border-t border-white/10 pt-2">
+                    <p className="text-xs text-zinc-400 mb-1">Landmarks:</p>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-xs">
+                        <div className="w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50"></div>
+                        <span className="text-zinc-300">Wrist</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <div className="w-3 h-3 rounded-full bg-green-500 shadow-lg shadow-green-500/50"></div>
+                        <span className="text-zinc-300">Index</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <div className="w-3 h-3 rounded-full bg-orange-500 shadow-lg shadow-orange-500/50"></div>
+                        <span className="text-zinc-300">Pinky</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <div className="w-3 h-3 rounded-full bg-blue-400 shadow-lg shadow-blue-400/50"></div>
+                        <span className="text-zinc-300">All (21)</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </CardBody>
