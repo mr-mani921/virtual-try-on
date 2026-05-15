@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
@@ -31,71 +31,77 @@ export function WatchModel({
   const [modelLoaded, setModelLoaded] = useState(false)
 
   // Load the GLTF model
-  const { scene, nodes, materials } = useGLTF(modelPath)
+  const { scene } = useGLTF(modelPath)
+
+  // Memoize the processed model to avoid recreating on every render
+  const processedModel = useMemo(() => {
+    if (!scene) return null
+
+    // Clone the scene to avoid modifying the cached version
+    const clonedScene = scene.clone()
+
+    // Normalize the model
+    const box = new THREE.Box3().setFromObject(clonedScene)
+    const center = box.getCenter(new THREE.Vector3())
+    const size = box.getSize(new THREE.Vector3())
+
+    // Center the model at origin
+    clonedScene.position.sub(center)
+
+    // Calculate scale to normalize to unit size
+    const maxDim = Math.max(size.x, size.y, size.z)
+    const normalizedScale = 1 / maxDim
+
+    // Apply normalized scale
+    clonedScene.scale.setScalar(normalizedScale * scale)
+
+    // Adjust rotation to align with wrist orientation
+    clonedScene.rotation.set(0, 0, 0)
+
+    // Optimize materials and enable shadows
+    clonedScene.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true
+        child.receiveShadow = true
+
+        // Enhance materials
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach((mat) => {
+              if (mat instanceof THREE.MeshStandardMaterial) {
+                mat.envMapIntensity = 1.5
+                mat.needsUpdate = true
+              }
+            })
+          } else if (child.material instanceof THREE.MeshStandardMaterial) {
+            child.material.envMapIntensity = 1.5
+            child.material.needsUpdate = true
+          }
+        }
+
+        // Optimize geometry
+        if (child.geometry) {
+          child.geometry.computeBoundingSphere()
+        }
+      }
+    })
+
+    return clonedScene
+  }, [scene, scale])
 
   useEffect(() => {
-    if (scene && modelRef.current) {
+    if (processedModel && modelRef.current) {
       // Clear any existing children
       while (modelRef.current.children.length > 0) {
         modelRef.current.remove(modelRef.current.children[0])
       }
 
-      // Clone the scene to avoid modifying the cached version
-      const clonedScene = scene.clone()
-
-      // Normalize the model
-      const box = new THREE.Box3().setFromObject(clonedScene)
-      const center = box.getCenter(new THREE.Vector3())
-      const size = box.getSize(new THREE.Vector3())
-
-      // Center the model at origin
-      clonedScene.position.sub(center)
-
-      // Calculate scale to normalize to unit size
-      const maxDim = Math.max(size.x, size.y, size.z)
-      const normalizedScale = 1 / maxDim
-
-      // Apply normalized scale
-      clonedScene.scale.setScalar(normalizedScale * scale)
-
-      // Adjust rotation to align with wrist orientation
-      // Most watch models need rotation adjustments
-      clonedScene.rotation.set(0, 0, 0)
-
-      // Enable shadows
-      clonedScene.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.castShadow = true
-          child.receiveShadow = true
-
-          // Enhance materials
-          if (child.material) {
-            if (Array.isArray(child.material)) {
-              child.material.forEach((mat) => {
-                mat.envMapIntensity = 1.5
-                mat.needsUpdate = true
-              })
-            } else {
-              child.material.envMapIntensity = 1.5
-              child.material.needsUpdate = true
-            }
-          }
-        }
-      })
-
-      modelRef.current.add(clonedScene)
+      modelRef.current.add(processedModel)
       setModelLoaded(true)
-
-      console.log('Watch model loaded:', {
-        nodes: Object.keys(nodes).length,
-        materials: Object.keys(materials).length,
-        originalSize: size,
-        normalizedScale,
-      })
     }
-  }, [scene, nodes, materials, scale])
+  }, [processedModel])
 
-  useFrame((state, delta) => {
+  useFrame(() => {
     if (!groupRef.current || !wristPosition) return
 
     // Smooth position transition
