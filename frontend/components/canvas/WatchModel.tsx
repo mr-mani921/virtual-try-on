@@ -13,6 +13,8 @@ interface WatchModelProps {
   handedness?: 'Left' | 'Right'
   smoothing?: number
   scale?: number
+  dynamicScale?: number
+  useDynamicScaling?: boolean
   positionOffset?: { x: number; y: number; z: number }
   rotationOffset?: { x: number; y: number; z: number }
   showDebugAxis?: boolean
@@ -25,6 +27,8 @@ export function WatchModel({
   handedness = 'Right',
   smoothing = 0.3,
   scale = 1,
+  dynamicScale = 1,
+  useDynamicScaling = false,
   positionOffset = { x: 0, y: 0, z: 0 },
   rotationOffset = { x: 0, y: 0, z: 0 },
   showDebugAxis = false,
@@ -58,8 +62,9 @@ export function WatchModel({
     const maxDim = Math.max(size.x, size.y, size.z)
     const normalizedScale = 1 / maxDim
 
-    // Apply normalized scale
-    clonedScene.scale.setScalar(normalizedScale * scale)
+    // Apply scale (use dynamic scale if enabled, otherwise use static scale)
+    const finalScale = useDynamicScaling ? dynamicScale : scale
+    clonedScene.scale.setScalar(normalizedScale * finalScale)
 
     // Apply rotation offset for watch orientation
     clonedScene.rotation.set(
@@ -103,7 +108,7 @@ export function WatchModel({
     })
 
     return clonedScene
-  }, [scene, scale, rotationOffset, handedness])
+  }, [scene, scale, dynamicScale, useDynamicScaling, rotationOffset, handedness])
 
   useEffect(() => {
     if (processedModel && modelRef.current) {

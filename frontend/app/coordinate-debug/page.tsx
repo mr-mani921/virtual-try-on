@@ -9,6 +9,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { useHandTracking } from '@/hooks/useHandTracking'
 import { useCoordinateMapping } from '@/hooks/useCoordinateMapping'
 import { useWatchConfig } from '@/hooks/useWatchConfig'
+import { useDynamicScale } from '@/hooks/useDynamicScale'
 import { HandDebugVisualizer } from '@/components/canvas/HandDebugVisualizer'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
 import { WatchModel } from '@/components/canvas/WatchModel'
@@ -22,7 +23,9 @@ function CoordinateDebugScene({
   showWatchModel,
   showDebugAxis,
   watchConfig,
-  handedness
+  handedness,
+  useDynamicScaling,
+  dynamicScale
 }: { 
   showVisualizer: boolean
   showWristAnchor: boolean
@@ -30,6 +33,8 @@ function CoordinateDebugScene({
   showDebugAxis: boolean
   watchConfig: any
   handedness: 'Left' | 'Right'
+  useDynamicScaling: boolean
+  dynamicScale: number
 }) {
   const { camera } = useThree()
   const [handDetection, setHandDetection] = useState<any>(null)
@@ -85,6 +90,8 @@ function CoordinateDebugScene({
           handedness={handedness}
           smoothing={watchConfig.smoothing}
           scale={watchConfig.scale}
+          dynamicScale={dynamicScale}
+          useDynamicScaling={useDynamicScaling}
           positionOffset={watchConfig.positionOffset}
           rotationOffset={watchConfig.rotationOffset}
           showDebugAxis={showDebugAxis}
@@ -112,6 +119,7 @@ export default function CoordinateDebugPage() {
   const [showGrid, setShowGrid] = useState(true)
   const [showCoordinates, setShowCoordinates] = useState(true)
   const [showWatchControls, setShowWatchControls] = useState(true)
+  const [useDynamicScaling, setUseDynamicScaling] = useState(true)
   const handTrackingStartedRef = useRef(false)
 
   // Watch configuration hook
@@ -127,6 +135,18 @@ export default function CoordinateDebugPage() {
       }
     },
   })
+
+  // Dynamic scaling hook
+  const { dynamicScale, handWidth, averageDepth, isStable } = useDynamicScale(
+    handDetection,
+    {
+      baseScale: watchConfig.config.scale,
+      minScale: 0.8,
+      maxScale: 3.0,
+      smoothing: 0.15,
+      enabled: useDynamicScaling,
+    }
+  )
 
   const handleStreamReady = useCallback((stream: MediaStream) => {
     setCameraReady(true)
@@ -259,7 +279,7 @@ export default function CoordinateDebugPage() {
 
           {/* Coordinate Info */}
           {showCoordinates && handDetection && (
-            <div className="absolute bottom-4 left-4 max-w-sm">
+            <div className="absolute bottom-4 left-4 max-w-sm space-y-2">
               <Card>
                 <CardBody className="py-3">
                   <h4 className="text-xs font-semibold text-white mb-2 flex items-center gap-2">
@@ -291,6 +311,40 @@ export default function CoordinateDebugPage() {
                   </div>
                 </CardBody>
               </Card>
+
+              {/* Dynamic Scaling Info */}
+              {useDynamicScaling && (
+                <Card>
+                  <CardBody className="py-3">
+                    <h4 className="text-xs font-semibold text-white mb-2 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                      </svg>
+                      Dynamic Scaling
+                    </h4>
+                    <div className="space-y-2 text-xs font-mono">
+                      <div className="bg-zinc-800/50 rounded p-2">
+                        <p className="text-zinc-400 mb-1">Current Scale:</p>
+                        <p className="text-purple-400">{dynamicScale.toFixed(3)}</p>
+                      </div>
+                      <div className="bg-zinc-800/50 rounded p-2">
+                        <p className="text-zinc-400 mb-1">Hand Width:</p>
+                        <p className="text-sky-400">{handWidth.toFixed(4)}</p>
+                      </div>
+                      <div className="bg-zinc-800/50 rounded p-2">
+                        <p className="text-zinc-400 mb-1">Avg Depth:</p>
+                        <p className="text-green-400">{averageDepth.toFixed(4)}</p>
+                      </div>
+                      <div className="bg-zinc-800/50 rounded p-2">
+                        <p className="text-zinc-400 mb-1">Status:</p>
+                        <p className={isStable ? 'text-green-400' : 'text-yellow-400'}>
+                          {isStable ? 'Stable' : 'Adjusting...'}
+                        </p>
+                      </div>
+                    </div>
+                  </CardBody>
+                </Card>
+              )}
             </div>
           )}
         </div>
@@ -309,6 +363,8 @@ export default function CoordinateDebugPage() {
               showDebugAxis={showDebugAxis}
               watchConfig={watchConfig.config}
               handedness={handDetection?.handedness || 'Right'}
+              useDynamicScaling={useDynamicScaling}
+              dynamicScale={dynamicScale}
             />
           </Canvas>
           
@@ -339,6 +395,16 @@ export default function CoordinateDebugPage() {
                     <span className="font-semibold">Watch Model</span>
                     <div className={`w-8 h-4 rounded-full transition-colors ${showWatchModel ? 'bg-purple-500' : 'bg-zinc-600'} relative`}>
                       <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${showWatchModel ? 'translate-x-4' : 'translate-x-0.5'}`}></div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setUseDynamicScaling(!useDynamicScaling)}
+                    className="flex items-center justify-between gap-3 text-xs text-white hover:text-purple-400 transition-colors"
+                  >
+                    <span>Dynamic Scaling</span>
+                    <div className={`w-8 h-4 rounded-full transition-colors ${useDynamicScaling ? 'bg-purple-500' : 'bg-zinc-600'} relative`}>
+                      <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${useDynamicScaling ? 'translate-x-4' : 'translate-x-0.5'}`}></div>
                     </div>
                   </button>
 

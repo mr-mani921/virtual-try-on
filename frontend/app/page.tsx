@@ -8,6 +8,7 @@ import { Card, CardBody } from '@/components/ui/Card'
 import { useHandTracking } from '@/hooks/useHandTracking'
 import { useCoordinateMapping } from '@/hooks/useCoordinateMapping'
 import { useWatchConfig } from '@/hooks/useWatchConfig'
+import { useDynamicScale } from '@/hooks/useDynamicScale'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
 import { WatchModel } from '@/components/canvas/WatchModel'
 import Link from 'next/link'
@@ -16,12 +17,16 @@ function ARScene({
   showWristAnchor, 
   showWatchModel,
   watchConfig,
-  handedness
+  handedness,
+  dynamicScale,
+  useDynamicScaling
 }: { 
   showWristAnchor: boolean
   showWatchModel: boolean
   watchConfig: any
   handedness: 'Left' | 'Right'
+  dynamicScale: number
+  useDynamicScaling: boolean
 }) {
   const { camera } = useThree()
   const [handDetection, setHandDetection] = useState<any>(null)
@@ -54,6 +59,8 @@ function ARScene({
           handedness={handedness}
           smoothing={watchConfig.smoothing}
           scale={watchConfig.scale}
+          dynamicScale={dynamicScale}
+          useDynamicScaling={useDynamicScaling}
           positionOffset={watchConfig.positionOffset}
           rotationOffset={watchConfig.rotationOffset}
           showDebugAxis={false}
@@ -87,6 +94,15 @@ export default function Home() {
         ;(window as any).__setHandDetectionAR(hand)
       }
     },
+  })
+
+  // Dynamic scaling hook (enabled by default in main AR page)
+  const { dynamicScale } = useDynamicScale(handDetection, {
+    baseScale: watchConfig.config.scale,
+    minScale: 0.8,
+    maxScale: 3.0,
+    smoothing: 0.15,
+    enabled: true,
   })
 
   const handleStreamReady = useCallback((stream: MediaStream) => {
@@ -194,6 +210,8 @@ export default function Home() {
                   showWatchModel={showWatchModel}
                   watchConfig={watchConfig.config}
                   handedness={handDetection?.handedness || 'Right'}
+                  dynamicScale={dynamicScale}
+                  useDynamicScaling={true}
                 />
               </Canvas>
             </div>
