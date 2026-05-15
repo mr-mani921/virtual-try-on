@@ -10,16 +10,22 @@ import { useHandTracking } from '@/hooks/useHandTracking'
 import { useCoordinateMapping } from '@/hooks/useCoordinateMapping'
 import { HandDebugVisualizer } from '@/components/canvas/HandDebugVisualizer'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
+import { WatchModel } from '@/components/canvas/WatchModel'
+import { ModelInspector } from '@/components/canvas/ModelInspector'
 import Link from 'next/link'
 
 function CoordinateDebugScene({ 
   showVisualizer, 
   showWristAnchor,
-  showDebugAxis 
+  showWatchModel,
+  showDebugAxis,
+  watchScale
 }: { 
   showVisualizer: boolean
   showWristAnchor: boolean
+  showWatchModel: boolean
   showDebugAxis: boolean
+  watchScale: number
 }) {
   const { camera } = useThree()
   const [handDetection, setHandDetection] = useState<any>(null)
@@ -41,9 +47,13 @@ function CoordinateDebugScene({
       <ambientLight intensity={0.6} />
       <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
       <pointLight position={[-10, -10, -10]} intensity={0.4} />
+      <spotLight position={[0, 10, 0]} intensity={0.5} castShadow />
       
       <gridHelper args={[20, 20, '#3f3f46', '#27272a']} position={[0, -0.01, 0]} />
       <axesHelper args={[3]} />
+      
+      {/* Model Inspector (runs once to analyze the model) */}
+      <ModelInspector modelPath="/models/watch.glb" />
       
       {showVisualizer && mappedData && (
         <HandDebugVisualizer
@@ -55,11 +65,21 @@ function CoordinateDebugScene({
         />
       )}
 
-      {showWristAnchor && mappedData && (
+      {showWristAnchor && !showWatchModel && mappedData && (
         <WristAnchor
           wristPosition={mappedData.wristPosition}
           handOrientation={mappedData.handOrientation}
           smoothing={0.3}
+          showDebugAxis={showDebugAxis}
+        />
+      )}
+
+      {showWatchModel && mappedData && (
+        <WatchModel
+          wristPosition={mappedData.wristPosition}
+          handOrientation={mappedData.handOrientation}
+          smoothing={0.3}
+          scale={watchScale}
           showDebugAxis={showDebugAxis}
         />
       )}
@@ -79,11 +99,12 @@ export default function CoordinateDebugPage() {
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [showLandmarks, setShowLandmarks] = useState(true)
   const [showVisualizer, setShowVisualizer] = useState(true)
-  const [showWristAnchor, setShowWristAnchor] = useState(true)
+  const [showWristAnchor, setShowWristAnchor] = useState(false)
+  const [showWatchModel, setShowWatchModel] = useState(true)
   const [showDebugAxis, setShowDebugAxis] = useState(false)
   const [showGrid, setShowGrid] = useState(true)
   const [showCoordinates, setShowCoordinates] = useState(true)
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
+  const [watchScale, setWatchScale] = useState(0.5)
   const handTrackingStartedRef = useRef(false)
 
   const { handDetection, isLoading, error, startTracking } = useHandTracking({
@@ -113,7 +134,6 @@ export default function CoordinateDebugPage() {
   }, [startTracking])
 
   const toggleCamera = () => {
-    setFacingMode(prev => prev === 'user' ? 'environment' : 'user')
     handTrackingStartedRef.current = false
   }
 
@@ -159,11 +179,10 @@ export default function CoordinateDebugPage() {
           <CameraView 
             onStreamReady={handleStreamReady}
             onVideoReady={handleVideoReady}
-            showControls={false}
+            showControls={true}
             handDetection={handDetection}
             videoElement={videoElement}
             showLandmarks={showLandmarks}
-            facingMode={facingMode}
           />
           
           {/* Camera Label */}
@@ -223,16 +242,6 @@ export default function CoordinateDebugPage() {
                       <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${showLandmarks ? 'translate-x-4' : 'translate-x-0.5'}`}></div>
                     </div>
                   </button>
-                  
-                  <button
-                    onClick={toggleCamera}
-                    className="flex items-center gap-2 text-xs text-white hover:text-sky-400 transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Flip Camera
-                  </button>
                 </div>
               </CardBody>
             </Card>
@@ -286,7 +295,9 @@ export default function CoordinateDebugPage() {
             <CoordinateDebugScene 
               showVisualizer={showVisualizer} 
               showWristAnchor={showWristAnchor}
+              showWatchModel={showWatchModel}
               showDebugAxis={showDebugAxis}
+              watchScale={watchScale}
             />
           </Canvas>
           
@@ -311,10 +322,20 @@ export default function CoordinateDebugPage() {
               <CardBody className="py-2 px-3">
                 <div className="flex flex-col gap-2">
                   <button
+                    onClick={() => setShowWatchModel(!showWatchModel)}
+                    className="flex items-center justify-between gap-3 text-xs text-white hover:text-purple-400 transition-colors"
+                  >
+                    <span className="font-semibold">Watch Model</span>
+                    <div className={`w-8 h-4 rounded-full transition-colors ${showWatchModel ? 'bg-purple-500' : 'bg-zinc-600'} relative`}>
+                      <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${showWatchModel ? 'translate-x-4' : 'translate-x-0.5'}`}></div>
+                    </div>
+                  </button>
+
+                  <button
                     onClick={() => setShowWristAnchor(!showWristAnchor)}
                     className="flex items-center justify-between gap-3 text-xs text-white hover:text-purple-400 transition-colors"
                   >
-                    <span className="font-semibold">Wrist Anchor</span>
+                    <span>Placeholder Cube</span>
                     <div className={`w-8 h-4 rounded-full transition-colors ${showWristAnchor ? 'bg-purple-500' : 'bg-zinc-600'} relative`}>
                       <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${showWristAnchor ? 'translate-x-4' : 'translate-x-0.5'}`}></div>
                     </div>
@@ -351,6 +372,22 @@ export default function CoordinateDebugPage() {
                       <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${showGrid ? 'translate-x-4' : 'translate-x-0.5'}`}></div>
                     </div>
                   </button>
+
+                  <div className="w-full h-px bg-white/10"></div>
+
+                  {/* Scale Slider */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-zinc-400">Watch Scale: {watchScale.toFixed(2)}</label>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="2"
+                      step="0.1"
+                      value={watchScale}
+                      onChange={(e) => setWatchScale(parseFloat(e.target.value))}
+                      className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    />
+                  </div>
                 </div>
               </CardBody>
             </Card>
@@ -362,39 +399,52 @@ export default function CoordinateDebugPage() {
               <CardBody className="py-3">
                 <h4 className="text-xs font-semibold text-white mb-2 flex items-center gap-2">
                   <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   Visual Elements
                 </h4>
                 <div className="space-y-2">
-                  <div>
-                    <p className="text-xs text-zinc-400 mb-1">Wrist Anchor:</p>
-                    <div className="flex items-center gap-2 text-xs">
-                      <div className="w-4 h-3 bg-purple-500 rounded shadow-lg shadow-purple-500/50"></div>
-                      <span className="text-zinc-300">Watch Placeholder</span>
-                    </div>
-                  </div>
-                  <div className="border-t border-white/10 pt-2">
-                    <p className="text-xs text-zinc-400 mb-1">Landmarks:</p>
-                    <div className="space-y-1">
+                  {showWatchModel && (
+                    <div>
+                      <p className="text-xs text-zinc-400 mb-1">Watch Model:</p>
                       <div className="flex items-center gap-2 text-xs">
-                        <div className="w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50"></div>
-                        <span className="text-zinc-300">Wrist</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <div className="w-3 h-3 rounded-full bg-green-500 shadow-lg shadow-green-500/50"></div>
-                        <span className="text-zinc-300">Index</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <div className="w-3 h-3 rounded-full bg-orange-500 shadow-lg shadow-orange-500/50"></div>
-                        <span className="text-zinc-300">Pinky</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <div className="w-3 h-3 rounded-full bg-blue-400 shadow-lg shadow-blue-400/50"></div>
-                        <span className="text-zinc-300">All (21)</span>
+                        <div className="w-4 h-3 bg-gradient-to-br from-gray-400 to-gray-600 rounded shadow-lg"></div>
+                        <span className="text-zinc-300">GLB Asset</span>
                       </div>
                     </div>
-                  </div>
+                  )}
+                  {showWristAnchor && (
+                    <div>
+                      <p className="text-xs text-zinc-400 mb-1">Placeholder:</p>
+                      <div className="flex items-center gap-2 text-xs">
+                        <div className="w-4 h-3 bg-purple-500 rounded shadow-lg shadow-purple-500/50"></div>
+                        <span className="text-zinc-300">Debug Cube</span>
+                      </div>
+                    </div>
+                  )}
+                  {showVisualizer && (
+                    <div className={showWatchModel || showWristAnchor ? 'border-t border-white/10 pt-2' : ''}>
+                      <p className="text-xs text-zinc-400 mb-1">Landmarks:</p>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs">
+                          <div className="w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50"></div>
+                          <span className="text-zinc-300">Wrist</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <div className="w-3 h-3 rounded-full bg-green-500 shadow-lg shadow-green-500/50"></div>
+                          <span className="text-zinc-300">Index</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <div className="w-3 h-3 rounded-full bg-orange-500 shadow-lg shadow-orange-500/50"></div>
+                          <span className="text-zinc-300">Pinky</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <div className="w-3 h-3 rounded-full bg-blue-400 shadow-lg shadow-blue-400/50"></div>
+                          <span className="text-zinc-300">All (21)</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardBody>
             </Card>
