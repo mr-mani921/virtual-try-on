@@ -15,7 +15,14 @@ export interface WatchPreset {
   config: WatchConfig
 }
 
-// Default presets for different watch types
+// Default presets for different watch types.
+//
+// rotationOffset semantics changed in Ticket 9A:
+// The new quaternion coordinate frame (calculateWristQuaternion) already maps
+// the model's local +Z to the palm normal (toward camera) and local +Y to the
+// forearm direction. The old Euler-based frame had Y and Z swapped, so the old
+// presets all carried rotationOffset.x = π/2 to compensate.
+// In the new frame that compensation is no longer needed — x offset is 0.
 export const WATCH_PRESETS: Record<string, WatchPreset> = {
   default: {
     name: 'Default',
@@ -23,7 +30,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 2.5,
       positionOffset: { x: 0, y: 0, z: 0 },
-      rotationOffset: { x: Math.PI / 2, y: 0, z: 0 },
+      rotationOffset: { x: 0, y: 0, z: 0 },
       smoothing: 0.3,
     },
   },
@@ -33,7 +40,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 1.8,
       positionOffset: { x: 0, y: 0.05, z: 0 },
-      rotationOffset: { x: Math.PI / 2, y: 0, z: 0 },
+      rotationOffset: { x: 0, y: 0, z: 0 },
       smoothing: 0.3,
     },
   },
@@ -43,7 +50,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 1.4,
       positionOffset: { x: 0, y: -0.02, z: 0 },
-      rotationOffset: { x: Math.PI / 2, y: Math.PI / 12, z: 0 },
+      rotationOffset: { x: 0, y: Math.PI / 12, z: 0 },
       smoothing: 0.4,
     },
   },
@@ -53,7 +60,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 1.6,
       positionOffset: { x: 0, y: 0, z: 0.01 },
-      rotationOffset: { x: Math.PI / 2, y: 0, z: 0 },
+      rotationOffset: { x: 0, y: 0, z: 0 },
       smoothing: 0.25,
     },
   },
