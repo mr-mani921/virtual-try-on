@@ -106,32 +106,49 @@ export function landmarksToWorld(
 }
 
 /**
- * Calculate hand orientation from wrist and finger base landmarks
+ * Calculate wrist orientation as a quaternion from three anchor landmarks.
+ *
+ * Coordinate frame built on the wrist plane:
+ *   Y (up)     — wrist → midpoint of knuckle row (along forearm toward fingers)
+ *   X (right)  — pinky base → index base (across palm width)
+ *   Z (normal) — out of the back of the hand (palm normal)
+ *
+ * A full Gram-Schmidt pass guarantees the basis is orthonormal regardless of
+ * landmark noise, eliminating the shear that caused jitter with the old approach.
+ * Returning a Quaternion instead of an Euler avoids gimbal-lock discontinuities
+ * when the wrist rotates through ±90° pitch — the range every watch wearer hits.
  */
-export function calculateHandOrientation(
+export function calculateWristQuaternion(
   wrist: WorldCoordinates,
   indexBase: WorldCoordinates,
   pinkyBase: WorldCoordinates
-): THREE.Euler {
-  // Create vectors
+): THREE.Quaternion {
   const wristVec = new THREE.Vector3(wrist.x, wrist.y, wrist.z)
   const indexVec = new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z)
   const pinkyVec = new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z)
-  
-  // Calculate hand plane vectors
-  const palmVector = new THREE.Vector3().subVectors(indexVec, pinkyVec).normalize()
-  const forwardVector = new THREE.Vector3().subVectors(indexVec, wristVec).normalize()
-  const upVector = new THREE.Vector3().crossVectors(forwardVector, palmVector).normalize()
-  
-  // Create rotation matrix
-  const matrix = new THREE.Matrix4()
-  matrix.makeBasis(palmVector, upVector, forwardVector)
-  
-  // Extract euler angles
-  const euler = new THREE.Euler()
-  euler.setFromRotationMatrix(matrix)
-  
-  return euler
+
+  // Primary axis: wrist toward the midpoint of the knuckle row.
+  // Using the midpoint (not just wrist→index) gives a more stable axis that
+  // doesn't drift when the index finger spreads.
+  const midKnuckles = new THREE.Vector3()
+    .addVectors(indexVec, pinkyVec)
+    .multiplyScalar(0.5)
+  const upAxis = new THREE.Vector3().subVectors(midKnuckles, wristVec).normalize()
+
+  // Secondary axis: across the palm from pinky to index.
+  const rightAxis = new THREE.Vector3().subVectors(indexVec, pinkyVec).normalize()
+
+  // Gram-Schmidt step 1: derive the palm normal orthogonal to both axes.
+  const normalAxis = new THREE.Vector3().crossVectors(rightAxis, upAxis).normalize()
+
+  // Gram-Schmidt step 2: re-derive right so the basis is perfectly orthonormal.
+  rightAxis.crossVectors(upAxis, normalAxis).normalize()
+
+  // Build rotation matrix and extract quaternion.
+  // makeBasis(X, Y, Z) maps local axes to world axes:
+  //   local +X → rightAxis, local +Y → upAxis, local +Z → normalAxis
+  const matrix = new THREE.Matrix4().makeBasis(rightAxis, upAxis, normalAxis)
+  return new THREE.Quaternion().setFromRotationMatrix(matrix)
 }
 
 /**

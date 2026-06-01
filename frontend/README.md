@@ -4,7 +4,7 @@
 
 This is a browser-based AR (Augmented Reality) watch try-on system built with React Three Fiber, Three.js, and Next.js. The goal is to allow users to virtually try on watches using their webcam and hand tracking.
 
-**Current Status:** Ticket 8 Complete - Dynamic Scaling System  
+**Current Status:** Ticket 9A Complete - Quaternion Rotation System  
 **Next Steps:** Multiple watch models and watch selection UI
 
 ---
@@ -105,6 +105,15 @@ This is a browser-based AR (Augmented Reality) watch try-on system built with Re
   - Reset to default button
 - Fine-tuned watch placement on wrist
 - Smooth real-time tracking with configurable responsiveness
+
+### ✅ Ticket 9A: Quaternion Rotation System (Critical)
+- Replaced Euler angle lerp with `Quaternion.slerp()` — eliminates gimbal-lock flickering
+- Fixed non-orthonormal basis bug in `calculateHandOrientation` → now `calculateWristQuaternion`
+- Gram-Schmidt orthonormalization using midknuckle midpoint for stable wrist direction
+- `useState` → `useRef` in `WatchModel` and `WristAnchor` — eliminates 60fps React re-renders
+- Decoupled `useMemo` from scale/rotation/handedness — model no longer re-clones every frame
+- Pre-allocated THREE.js objects (Quaternion, Euler) as refs — zero GC pressure per frame
+- `handOrientation` type updated: `THREE.Euler` → `THREE.Quaternion` throughout
 
 ### ✅ Ticket 8: Dynamic Scaling System
 - Automatic watch size adjustment based on hand width

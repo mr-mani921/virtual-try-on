@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import type { HandDetection } from '@/lib/mediapipe/types'
 import {
   landmarkToWorld,
-  calculateHandOrientation,
+  calculateWristQuaternion,
   type WorldCoordinates,
   type CoordinateMappingOptions,
 } from '@/lib/three/coordinateMapping'
@@ -20,7 +20,7 @@ interface MappedHandData {
   wristPosition: WorldCoordinates
   indexBasePosition: WorldCoordinates
   pinkyBasePosition: WorldCoordinates
-  handOrientation: THREE.Euler
+  handOrientation: THREE.Quaternion
   allLandmarksWorld: WorldCoordinates[]
 }
 
@@ -60,7 +60,7 @@ export function useCoordinateMapping(
       mappingOptions
     )
 
-    const handOrientation = calculateHandOrientation(
+    const handOrientation = calculateWristQuaternion(
       wristPosition,
       indexBasePosition,
       pinkyBasePosition

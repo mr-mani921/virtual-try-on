@@ -9,7 +9,7 @@ import { lerpWorldCoordinates } from '@/lib/three/coordinateMapping'
 
 interface WatchModelProps {
   wristPosition: WorldCoordinates | null
-  handOrientation?: THREE.Euler | null
+  handOrientation?: THREE.Quaternion | null
   handedness?: 'Left' | 'Right'
   smoothing?: number
   scale?: number
@@ -36,87 +36,70 @@ export function WatchModel({
 }: WatchModelProps) {
   const groupRef = useRef<THREE.Group>(null)
   const modelRef = useRef<THREE.Group>(null)
-  const [currentPosition, setCurrentPosition] = useState<WorldCoordinates | null>(null)
-  const [currentRotation, setCurrentRotation] = useState<THREE.Euler | null>(null)
   const [modelLoaded, setModelLoaded] = useState(false)
 
-  // Load the GLTF model
+  // Per-frame state lives in refs — never in React state — to avoid 60fps re-renders.
+  const currentPosRef = useRef<WorldCoordinates | null>(null)
+  const currentQuatRef = useRef(new THREE.Quaternion())
+  const targetQuatRef = useRef(new THREE.Quaternion())
+  const offsetQuatRef = useRef(new THREE.Quaternion())
+  const tempEulerRef = useRef(new THREE.Euler())
+  const rotationInitializedRef = useRef(false)
+
+  // Stores the 1/maxDim normalization factor so useFrame can apply final scale
+  // without triggering a model re-clone.
+  const normalizedScaleRef = useRef(1)
+
   const { scene } = useGLTF(modelPath)
 
-  // Memoize the processed model to avoid recreating on every render
+  // useMemo only recalculates when the source GLB scene changes.
+  // Scale, rotation offset, and handedness are intentionally excluded —
+  // they are applied every frame via refs in useFrame so that slider
+  // adjustments don't cause a full model re-clone.
   const processedModel = useMemo(() => {
     if (!scene) return null
 
-    // Clone the scene to avoid modifying the cached version
-    const clonedScene = scene.clone()
+    const cloned = scene.clone()
 
-    // Normalize the model
-    const box = new THREE.Box3().setFromObject(clonedScene)
+    // Center geometry at origin.
+    const box = new THREE.Box3().setFromObject(cloned)
     const center = box.getCenter(new THREE.Vector3())
     const size = box.getSize(new THREE.Vector3())
+    cloned.position.sub(center)
 
-    // Center the model at origin
-    clonedScene.position.sub(center)
-
-    // Calculate scale to normalize to unit size
+    // Normalize to unit size; store factor for useFrame.
     const maxDim = Math.max(size.x, size.y, size.z)
-    const normalizedScale = 1 / maxDim
+    normalizedScaleRef.current = maxDim > 0 ? 1 / maxDim : 1
 
-    // Apply scale (use dynamic scale if enabled, otherwise use static scale)
-    const finalScale = useDynamicScaling ? dynamicScale : scale
-    clonedScene.scale.setScalar(normalizedScale * finalScale)
-
-    // Apply rotation offset for watch orientation
-    clonedScene.rotation.set(
-      rotationOffset.x,
-      rotationOffset.y,
-      rotationOffset.z
-    )
-
-    // Apply handedness-based flipping
-    if (handedness === 'Left') {
-      // Mirror the watch for left hand
-      clonedScene.scale.x *= -1
-    }
-
-    // Optimize materials and enable shadows
-    clonedScene.traverse((child) => {
+    cloned.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.castShadow = true
         child.receiveShadow = true
-
-        // Enhance materials
         if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach((mat) => {
-              if (mat instanceof THREE.MeshStandardMaterial) {
-                mat.envMapIntensity = 1.5
-                mat.needsUpdate = true
-              }
-            })
-          } else if (child.material instanceof THREE.MeshStandardMaterial) {
-            child.material.envMapIntensity = 1.5
-            child.material.needsUpdate = true
-          }
+          const mats = Array.isArray(child.material)
+            ? child.material
+            : [child.material]
+          mats.forEach((mat) => {
+            if (mat instanceof THREE.MeshStandardMaterial) {
+              mat.envMapIntensity = 1.5
+              mat.needsUpdate = true
+            }
+          })
         }
-
-        // Optimize geometry
         if (child.geometry) {
           child.geometry.computeBoundingSphere()
         }
       }
     })
 
-    return clonedScene
-  }, [scene, scale, dynamicScale, useDynamicScaling, rotationOffset, handedness])
+    return cloned
+  }, [scene])
 
   useEffect(() => {
     if (processedModel && modelRef.current) {
-      // Clear any existing children
       while (modelRef.current.children.length > 0) {
         modelRef.current.remove(modelRef.current.children[0])
       }
-
       modelRef.current.add(processedModel)
       setModelLoaded(true)
     }
@@ -125,50 +108,49 @@ export function WatchModel({
   useFrame(() => {
     if (!groupRef.current || !wristPosition) return
 
-    // Apply position offset
-    const offsetPosition = {
+    // --- Position (lerp via refs, no state) ---
+    const targetPos = {
       x: wristPosition.x + positionOffset.x,
       y: wristPosition.y + positionOffset.y,
       z: wristPosition.z + positionOffset.z,
     }
 
-    // Smooth position transition
-    const targetPosition = offsetPosition
-    const smoothedPosition = currentPosition
-      ? lerpWorldCoordinates(currentPosition, targetPosition, smoothing)
-      : targetPosition
+    if (currentPosRef.current) {
+      const smoothed = lerpWorldCoordinates(currentPosRef.current, targetPos, smoothing)
+      groupRef.current.position.set(smoothed.x, smoothed.y, smoothed.z)
+      currentPosRef.current = smoothed
+    } else {
+      groupRef.current.position.set(targetPos.x, targetPos.y, targetPos.z)
+      currentPosRef.current = { ...targetPos }
+    }
 
-    groupRef.current.position.set(
-      smoothedPosition.x,
-      smoothedPosition.y,
-      smoothedPosition.z
-    )
-
-    setCurrentPosition(smoothedPosition)
-
-    // Smooth rotation transition
+    // --- Rotation (quaternion slerp — immune to gimbal lock) ---
     if (handOrientation) {
-      if (!currentRotation) {
-        groupRef.current.rotation.copy(handOrientation)
-        setCurrentRotation(handOrientation.clone())
+      // Compose: wrist world orientation * local rotation offset.
+      // All THREE objects pre-allocated as refs to avoid per-frame GC pressure.
+      tempEulerRef.current.set(rotationOffset.x, rotationOffset.y, rotationOffset.z)
+      offsetQuatRef.current.setFromEuler(tempEulerRef.current)
+      targetQuatRef.current.multiplyQuaternions(handOrientation, offsetQuatRef.current)
+
+      if (!rotationInitializedRef.current) {
+        // Snap to the first valid orientation; slerp from next frame onward.
+        currentQuatRef.current.copy(targetQuatRef.current)
+        rotationInitializedRef.current = true
       } else {
-        groupRef.current.rotation.x = THREE.MathUtils.lerp(
-          groupRef.current.rotation.x,
-          handOrientation.x,
-          smoothing
-        )
-        groupRef.current.rotation.y = THREE.MathUtils.lerp(
-          groupRef.current.rotation.y,
-          handOrientation.y,
-          smoothing
-        )
-        groupRef.current.rotation.z = THREE.MathUtils.lerp(
-          groupRef.current.rotation.z,
-          handOrientation.z,
-          smoothing
-        )
-        setCurrentRotation(groupRef.current.rotation.clone())
+        // slerp mutates currentQuatRef toward target — always takes the
+        // shortest angular path, preventing the ±π flip that caused flickering.
+        currentQuatRef.current.slerp(targetQuatRef.current, smoothing)
       }
+
+      groupRef.current.quaternion.copy(currentQuatRef.current)
+    }
+
+    // --- Scale (applied to modelRef so normalizedScale from useMemo is preserved) ---
+    if (modelRef.current) {
+      const finalScale = useDynamicScaling ? dynamicScale : scale
+      const s = normalizedScaleRef.current * finalScale
+      // Mirror X for left-hand wearers instead of re-cloning the model.
+      modelRef.current.scale.set(handedness === 'Left' ? -s : s, s, s)
     }
   })
 
@@ -178,7 +160,6 @@ export function WatchModel({
     <group ref={groupRef}>
       <group ref={modelRef} />
 
-      {/* Anchor point indicator (small sphere at wrist center) */}
       {showDebugAxis && (
         <>
           <mesh position={[0, 0, 0]}>
@@ -193,7 +174,6 @@ export function WatchModel({
         </>
       )}
 
-      {/* Loading indicator */}
       {!modelLoaded && (
         <mesh>
           <boxGeometry args={[0.2, 0.1, 0.3]} />
@@ -209,5 +189,4 @@ export function WatchModel({
   )
 }
 
-// Preload the model
 useGLTF.preload('/models/watch.glb')
