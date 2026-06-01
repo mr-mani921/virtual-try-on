@@ -6,6 +6,7 @@ import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import type { WorldCoordinates } from '@/lib/three/coordinateMapping'
 import { lerpWorldCoordinates } from '@/lib/three/coordinateMapping'
+import { MotionStabilizer } from '@/lib/three/motionSmoothing'
 
 interface WatchModelProps {
   wristPosition: WorldCoordinates | null
@@ -46,6 +47,9 @@ export function WatchModel({
   const tempEulerRef = useRef(new THREE.Euler())
   const rotationInitializedRef = useRef(false)
 
+  // Motion stabilizer for advanced smoothing
+  const stabilizer = useRef(new MotionStabilizer())
+
   // Stores the 1/maxDim normalization factor so useFrame can apply final scale
   // without triggering a model re-clone.
   const normalizedScaleRef = useRef(1)
@@ -81,7 +85,44 @@ export function WatchModel({
             : [child.material]
           mats.forEach((mat) => {
             if (mat instanceof THREE.MeshStandardMaterial) {
-              mat.envMapIntensity = 1.5
+              // Detect material type based on properties and name
+              const isGlass = mat.transparent || mat.opacity < 1.0 || 
+                             mat.name.toLowerCase().includes('glass') ||
+                             mat.name.toLowerCase().includes('crystal')
+              
+              const isMetal = mat.metalness > 0.5 || 
+                             mat.name.toLowerCase().includes('metal') ||
+                             mat.name.toLowerCase().includes('steel') ||
+                             mat.name.toLowerCase().includes('gold') ||
+                             mat.name.toLowerCase().includes('chrome')
+              
+              if (isGlass) {
+                // Glass/Crystal enhancement (cast to any for advanced properties)
+                const physicalMat = mat as any
+                mat.transparent = true
+                mat.opacity = Math.max(mat.opacity, 0.3)
+                physicalMat.transmission = 0.95
+                physicalMat.thickness = 0.5
+                mat.roughness = 0.05
+                mat.metalness = 0
+                mat.envMapIntensity = 2.0
+                physicalMat.ior = 1.5
+                physicalMat.clearcoat = 1.0
+                physicalMat.clearcoatRoughness = 0.1
+              } else if (isMetal) {
+                // Metallic enhancement
+                const physicalMat = mat as any
+                mat.metalness = Math.max(mat.metalness, 0.9)
+                mat.roughness = Math.min(mat.roughness, 0.3)
+                mat.envMapIntensity = 2.5
+                physicalMat.clearcoat = 0.5
+                physicalMat.clearcoatRoughness = 0.2
+              } else {
+                // Default material enhancement
+                mat.envMapIntensity = 1.5
+                mat.roughness = Math.max(mat.roughness, 0.4)
+              }
+              
               mat.needsUpdate = true
             }
           })
@@ -108,38 +149,48 @@ export function WatchModel({
   useFrame(() => {
     if (!groupRef.current || !wristPosition) return
 
-    // --- Position (lerp via refs, no state) ---
+    const timestamp = Date.now()
+
+    // --- Position with One Euro Filter + Velocity-Adaptive Smoothing ---
     const targetPos = {
       x: wristPosition.x + positionOffset.x,
       y: wristPosition.y + positionOffset.y,
       z: wristPosition.z + positionOffset.z,
     }
 
+    // Apply One Euro low-pass filter to reduce jitter
+    const filteredPos = stabilizer.current.filterPosition(targetPos, timestamp)
+
     if (currentPosRef.current) {
-      const smoothed = lerpWorldCoordinates(currentPosRef.current, targetPos, smoothing)
+      // Get velocity-adaptive alpha (faster motion = higher alpha = more responsive)
+      const adaptiveAlpha = stabilizer.current.getAdaptiveAlpha(filteredPos, timestamp)
+      const effectiveSmoothing = Math.max(smoothing, adaptiveAlpha)
+      
+      const smoothed = lerpWorldCoordinates(currentPosRef.current, filteredPos, effectiveSmoothing)
       groupRef.current.position.set(smoothed.x, smoothed.y, smoothed.z)
       currentPosRef.current = smoothed
     } else {
-      groupRef.current.position.set(targetPos.x, targetPos.y, targetPos.z)
-      currentPosRef.current = { ...targetPos }
+      groupRef.current.position.set(filteredPos.x, filteredPos.y, filteredPos.z)
+      currentPosRef.current = { ...filteredPos }
     }
 
-    // --- Rotation (quaternion slerp — immune to gimbal lock) ---
+    // --- Rotation with One Euro Filter + Quaternion Slerp ---
     if (handOrientation) {
-      // Compose: wrist world orientation * local rotation offset.
-      // All THREE objects pre-allocated as refs to avoid per-frame GC pressure.
+      // Compose: wrist world orientation * local rotation offset
       tempEulerRef.current.set(rotationOffset.x, rotationOffset.y, rotationOffset.z)
       offsetQuatRef.current.setFromEuler(tempEulerRef.current)
       targetQuatRef.current.multiplyQuaternions(handOrientation, offsetQuatRef.current)
 
+      // Apply One Euro filter to rotation for smooth tracking
+      const filteredQuat = stabilizer.current.filterRotation(targetQuatRef.current, timestamp)
+
       if (!rotationInitializedRef.current) {
-        // Snap to the first valid orientation; slerp from next frame onward.
-        currentQuatRef.current.copy(targetQuatRef.current)
+        // Snap to the first valid orientation
+        currentQuatRef.current.copy(filteredQuat)
         rotationInitializedRef.current = true
       } else {
-        // slerp mutates currentQuatRef toward target — always takes the
-        // shortest angular path, preventing the ±π flip that caused flickering.
-        currentQuatRef.current.slerp(targetQuatRef.current, smoothing)
+        // Slerp with filtered quaternion (double-smoothing for ultra-stable rotation)
+        currentQuatRef.current.slerp(filteredQuat, smoothing * 1.2)
       }
 
       groupRef.current.quaternion.copy(currentQuatRef.current)
@@ -149,9 +200,7 @@ export function WatchModel({
     if (modelRef.current) {
       const finalScale = useDynamicScaling ? dynamicScale : scale
       const s = normalizedScaleRef.current * finalScale
-      // Mirror Z (palm normal) for left-hand wearers.
-      // With rotationOffset.x = π already applied, mirroring Z correctly flips
-      // the watch from right-wrist to left-wrist orientation.
+      // Mirror Z (palm normal) for left-hand wearers
       modelRef.current.scale.set(s, s, handedness === 'Left' ? -s : s)
     }
   })

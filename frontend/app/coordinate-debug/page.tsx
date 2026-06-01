@@ -15,6 +15,7 @@ import { WristAnchor } from '@/components/canvas/WristAnchor'
 import { WatchModel } from '@/components/canvas/WatchModel'
 import { ModelInspector } from '@/components/canvas/ModelInspector'
 import { WatchControls } from '@/components/ui/WatchControls'
+import { Environment } from '@/components/canvas/Environment'
 import Link from 'next/link'
 
 function CoordinateDebugScene({ 
@@ -53,10 +54,23 @@ function CoordinateDebugScene({
     <>
       <color attach="background" args={['#18181b']} />
       
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
-      <pointLight position={[-10, -10, -10]} intensity={0.4} />
-      <spotLight position={[0, 10, 0]} intensity={0.5} castShadow />
+      <Environment preset="studio" intensity={1.0} />
+      <ambientLight intensity={0.3} />
+      <directionalLight 
+        position={[10, 10, 5]} 
+        intensity={0.8} 
+        castShadow 
+        shadow-mapSize={[1024, 1024]}
+        shadow-bias={-0.0001}
+      />
+      <pointLight position={[-10, -10, -10]} intensity={0.3} />
+      <spotLight 
+        position={[0, 10, 0]} 
+        intensity={0.4} 
+        angle={Math.PI / 4}
+        penumbra={0.5}
+        castShadow 
+      />
       
       <gridHelper args={[20, 20, '#3f3f46', '#27272a']} position={[0, -0.01, 0]} />
       <axesHelper args={[3]} />

@@ -11,6 +11,7 @@ import { useWatchConfig } from '@/hooks/useWatchConfig'
 import { useDynamicScale } from '@/hooks/useDynamicScale'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
 import { WatchModel } from '@/components/canvas/WatchModel'
+import { Environment } from '@/components/canvas/Environment'
 import Link from 'next/link'
 
 function ARScene({ 
@@ -67,9 +68,23 @@ function ARScene({
         />
       )}
       
-      <ambientLight intensity={0.8} />
-      <directionalLight position={[5, 5, 5]} intensity={1.2} castShadow />
-      <pointLight position={[-5, 3, -5]} intensity={0.5} />
+      <Environment preset="studio" intensity={1.2} />
+      <ambientLight intensity={0.3} />
+      <directionalLight 
+        position={[5, 5, 5]} 
+        intensity={0.8} 
+        castShadow 
+        shadow-mapSize={[1024, 1024]}
+        shadow-bias={-0.0001}
+      />
+      <pointLight position={[-5, 3, -5]} intensity={0.4} color="#fff" />
+      <spotLight 
+        position={[0, 5, 0]} 
+        intensity={0.3} 
+        angle={Math.PI / 4}
+        penumbra={0.5}
+        castShadow
+      />
     </>
   )
 }
