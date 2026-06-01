@@ -101,8 +101,9 @@ export default function Home() {
     baseScale: watchConfig.config.scale,
     minScale: 0.8,
     maxScale: 3.0,
-    smoothing: 0.15,
+    smoothing: 0.2,
     enabled: true,
+    adaptiveReference: true,
   })
 
   const handleStreamReady = useCallback((stream: MediaStream) => {

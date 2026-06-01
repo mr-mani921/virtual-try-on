@@ -137,14 +137,15 @@ export default function CoordinateDebugPage() {
   })
 
   // Dynamic scaling hook
-  const { dynamicScale, handWidth, averageDepth, isStable } = useDynamicScale(
+  const { dynamicScale, handWidth, wristDepth, isStable } = useDynamicScale(
     handDetection,
     {
       baseScale: watchConfig.config.scale,
       minScale: 0.8,
       maxScale: 3.0,
-      smoothing: 0.15,
+      smoothing: 0.2,
       enabled: useDynamicScaling,
+      adaptiveReference: true,
     }
   )
 
@@ -332,8 +333,8 @@ export default function CoordinateDebugPage() {
                         <p className="text-sky-400">{handWidth.toFixed(4)}</p>
                       </div>
                       <div className="bg-zinc-800/50 rounded p-2">
-                        <p className="text-zinc-400 mb-1">Avg Depth:</p>
-                        <p className="text-green-400">{averageDepth.toFixed(4)}</p>
+                        <p className="text-zinc-400 mb-1">Wrist Depth:</p>
+                        <p className="text-green-400">{wristDepth.toFixed(4)}</p>
                       </div>
                       <div className="bg-zinc-800/50 rounded p-2">
                         <p className="text-zinc-400 mb-1">Status:</p>
