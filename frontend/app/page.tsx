@@ -11,6 +11,7 @@ import { useWatchConfig } from '@/hooks/useWatchConfig'
 import { useDynamicScale } from '@/hooks/useDynamicScale'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
 import { WatchModel } from '@/components/canvas/WatchModel'
+import { WristOccluder } from '@/components/canvas/WristOccluder'
 import { Environment } from '@/components/canvas/Environment'
 import Link from 'next/link'
 
@@ -54,18 +55,27 @@ function ARScene({
       )}
 
       {showWatchModel && mappedData && (
-        <WatchModel
-          wristPosition={mappedData.wristPosition}
-          handOrientation={mappedData.handOrientation}
-          handedness={handedness}
-          smoothing={watchConfig.smoothing}
-          scale={watchConfig.scale}
-          dynamicScale={dynamicScale}
-          useDynamicScaling={useDynamicScaling}
-          positionOffset={watchConfig.positionOffset}
-          rotationOffset={watchConfig.rotationOffset}
-          showDebugAxis={false}
-        />
+        <>
+          <WristOccluder
+            wristPosition={mappedData.wristPosition}
+            handOrientation={mappedData.handOrientation}
+            indexBasePosition={mappedData.indexBasePosition}
+            pinkyBasePosition={mappedData.pinkyBasePosition}
+            smoothing={watchConfig.smoothing}
+          />
+          <WatchModel
+            wristPosition={mappedData.wristPosition}
+            handOrientation={mappedData.handOrientation}
+            handedness={handedness}
+            smoothing={watchConfig.smoothing}
+            scale={watchConfig.scale}
+            dynamicScale={dynamicScale}
+            useDynamicScaling={useDynamicScaling}
+            positionOffset={watchConfig.positionOffset}
+            rotationOffset={watchConfig.rotationOffset}
+            showDebugAxis={false}
+          />
+        </>
       )}
       
       <Environment preset="studio" intensity={1.2} />

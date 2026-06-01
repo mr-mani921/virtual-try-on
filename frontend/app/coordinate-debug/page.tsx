@@ -13,6 +13,7 @@ import { useDynamicScale } from '@/hooks/useDynamicScale'
 import { HandDebugVisualizer } from '@/components/canvas/HandDebugVisualizer'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
 import { WatchModel } from '@/components/canvas/WatchModel'
+import { WristOccluder } from '@/components/canvas/WristOccluder'
 import { ModelInspector } from '@/components/canvas/ModelInspector'
 import { WatchControls } from '@/components/ui/WatchControls'
 import { Environment } from '@/components/canvas/Environment'
@@ -98,18 +99,27 @@ function CoordinateDebugScene({
       )}
 
       {showWatchModel && mappedData && (
-        <WatchModel
-          wristPosition={mappedData.wristPosition}
-          handOrientation={mappedData.handOrientation}
-          handedness={handedness}
-          smoothing={watchConfig.smoothing}
-          scale={watchConfig.scale}
-          dynamicScale={dynamicScale}
-          useDynamicScaling={useDynamicScaling}
-          positionOffset={watchConfig.positionOffset}
-          rotationOffset={watchConfig.rotationOffset}
-          showDebugAxis={showDebugAxis}
-        />
+        <>
+          <WristOccluder
+            wristPosition={mappedData.wristPosition}
+            handOrientation={mappedData.handOrientation}
+            indexBasePosition={mappedData.indexBasePosition}
+            pinkyBasePosition={mappedData.pinkyBasePosition}
+            smoothing={watchConfig.smoothing}
+          />
+          <WatchModel
+            wristPosition={mappedData.wristPosition}
+            handOrientation={mappedData.handOrientation}
+            handedness={handedness}
+            smoothing={watchConfig.smoothing}
+            scale={watchConfig.scale}
+            dynamicScale={dynamicScale}
+            useDynamicScaling={useDynamicScaling}
+            positionOffset={watchConfig.positionOffset}
+            rotationOffset={watchConfig.rotationOffset}
+            showDebugAxis={showDebugAxis}
+          />
+        </>
       )}
       
       <OrbitControls 
