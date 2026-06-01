@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { mediapipeHandsLocateFile } from '@/lib/mediapipe/handsAssets'
 import type { HandDetection, Landmark } from '@/lib/mediapipe/types'
 import { HAND_LANDMARKS } from '@/lib/mediapipe/types'
 
@@ -80,9 +81,7 @@ export function useHandTracking(
 
         // Initialize MediaPipe Hands
         const hands = new Hands({
-          locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-          },
+          locateFile: mediapipeHandsLocateFile,
         })
 
         hands.setOptions({

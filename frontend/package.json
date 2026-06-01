@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sync:mediapipe": "node scripts/sync-mediapipe-hands.mjs",
+    "postinstall": "node scripts/sync-mediapipe-hands.mjs",
+    "predev": "node scripts/sync-mediapipe-hands.mjs",
+    "prebuild": "node scripts/sync-mediapipe-hands.mjs"
   },
   "dependencies": {
     "@mediapipe/camera_utils": "^0.3.1675466862",

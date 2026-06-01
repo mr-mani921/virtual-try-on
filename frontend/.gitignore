@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# MediaPipe Hands WASM assets (copied from node_modules on install)
+/public/mediapipe/
+
 # production
 /build
 
