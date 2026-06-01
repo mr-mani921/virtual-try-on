@@ -94,8 +94,12 @@ export function useHandTracking(
         hands.onResults((results) => {
           if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
             const landmarks = results.multiHandLandmarks[0]
-            const handedness = results.multiHandedness?.[0]?.label || 'Right'
+            const rawHandedness = results.multiHandedness?.[0]?.label || 'Right'
             const score = results.multiHandedness?.[0]?.score || 0
+
+            // MediaPipe's handedness is from its perspective (mirrored camera view).
+            // Invert it to match the user's actual hand.
+            const handedness = rawHandedness === 'Left' ? 'Right' : 'Left'
 
             const detection: HandDetection = {
               landmarks: {

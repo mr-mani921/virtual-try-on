@@ -149,8 +149,10 @@ export function WatchModel({
     if (modelRef.current) {
       const finalScale = useDynamicScaling ? dynamicScale : scale
       const s = normalizedScaleRef.current * finalScale
-      // Mirror X for left-hand wearers instead of re-cloning the model.
-      modelRef.current.scale.set(handedness === 'Left' ? -s : s, s, s)
+      // Mirror Z (palm normal) for left-hand wearers.
+      // With rotationOffset.x = π already applied, mirroring Z correctly flips
+      // the watch from right-wrist to left-wrist orientation.
+      modelRef.current.scale.set(s, s, handedness === 'Left' ? -s : s)
     }
   })
 

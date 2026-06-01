@@ -30,7 +30,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 2.5,
       positionOffset: { x: 0, y: 0, z: 0 },
-      rotationOffset: { x: 0, y: 0, z: 0 },
+      rotationOffset: { x: Math.PI, y: 0, z: 0 },
       smoothing: 0.3,
     },
   },
@@ -40,7 +40,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 1.8,
       positionOffset: { x: 0, y: 0.05, z: 0 },
-      rotationOffset: { x: 0, y: 0, z: 0 },
+      rotationOffset: { x: Math.PI, y: 0, z: 0 },
       smoothing: 0.3,
     },
   },
@@ -50,7 +50,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 1.4,
       positionOffset: { x: 0, y: -0.02, z: 0 },
-      rotationOffset: { x: 0, y: Math.PI / 12, z: 0 },
+      rotationOffset: { x: Math.PI, y: Math.PI / 12, z: 0 },
       smoothing: 0.4,
     },
   },
@@ -60,7 +60,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 1.6,
       positionOffset: { x: 0, y: 0, z: 0.01 },
-      rotationOffset: { x: 0, y: 0, z: 0 },
+      rotationOffset: { x: Math.PI, y: 0, z: 0 },
       smoothing: 0.25,
     },
   },
