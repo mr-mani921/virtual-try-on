@@ -106,19 +106,35 @@ export function landmarksToWorld(
 }
 
 /**
- * Calculate wrist orientation as a quaternion from three anchor landmarks.
- *
- * Coordinate frame built on the wrist plane:
- *   Y (up)     — wrist → midpoint of knuckle row (along forearm toward fingers)
- *   X (right)  — pinky base → index base (across palm width)
- *   Z (normal) — out of the back of the hand (palm normal)
- *
- * A full Gram-Schmidt pass guarantees the basis is orthonormal regardless of
- * landmark noise, eliminating the shear that caused jitter with the old approach.
- * Returning a Quaternion instead of an Euler avoids gimbal-lock discontinuities
- * when the wrist rotates through ±90° pitch — the range every watch wearer hits.
+ * Named axes of the wrist local coordinate frame, used for debug visualization
+ * and for downstream consumers that need raw axis vectors.
  */
-export function calculateWristQuaternion(
+export interface WristAxes {
+  /** Index → pinky direction (hand width axis) */
+  xAxis: THREE.Vector3
+  /** Derived from cross(Z, X) — maintains right-handed system */
+  yAxis: THREE.Vector3
+  /** Wrist → palm midpoint (forearm / finger direction) */
+  zAxis: THREE.Vector3
+  /** Wrist position in world space */
+  origin: THREE.Vector3
+}
+
+/**
+ * Build a mathematically correct wearable coordinate frame from three landmarks
+ * and return the resulting quaternion.
+ *
+ * Axis convention:
+ *   +Z  wrist → palm midpoint  (forearm / finger direction)
+ *   +X  index MCP → pinky MCP  (hand width direction)
+ *   +Y  cross(Z, X)             (right-handed — points into the palm)
+ *
+ * Two re-orthogonalization passes remove any residual non-orthogonality that
+ * MediaPipe landmark noise can introduce, keeping the basis perfectly orthonormal
+ * across all frames.  Returning a Quaternion (not an Euler) avoids gimbal-lock
+ * discontinuities when the wrist passes through ±90° pitch.
+ */
+export function computeWristQuaternion(
   wrist: WorldCoordinates,
   indexBase: WorldCoordinates,
   pinkyBase: WorldCoordinates
@@ -127,29 +143,70 @@ export function calculateWristQuaternion(
   const indexVec = new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z)
   const pinkyVec = new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z)
 
-  // Primary axis: wrist toward the midpoint of the knuckle row.
-  // Using the midpoint (not just wrist→index) gives a more stable axis that
-  // doesn't drift when the index finger spreads.
-  const midKnuckles = new THREE.Vector3()
+  // Palm midpoint from the two outermost MCP landmarks.
+  // Using the midpoint rather than a single knuckle improves stability when
+  // individual fingers spread or curl.
+  const palmMidpoint = new THREE.Vector3()
     .addVectors(indexVec, pinkyVec)
     .multiplyScalar(0.5)
-  const upAxis = new THREE.Vector3().subVectors(midKnuckles, wristVec).normalize()
 
-  // Secondary axis: across the palm from pinky to index.
-  const rightAxis = new THREE.Vector3().subVectors(indexVec, pinkyVec).normalize()
+  // Z — forward / forearm direction (wrist toward palm midpoint)
+  const Z = new THREE.Vector3().subVectors(palmMidpoint, wristVec).normalize()
 
-  // Gram-Schmidt step 1: derive the palm normal orthogonal to both axes.
-  const normalAxis = new THREE.Vector3().crossVectors(rightAxis, upAxis).normalize()
+  // X — hand width direction (index MCP toward pinky MCP)
+  const X = new THREE.Vector3().subVectors(pinkyVec, indexVec).normalize()
 
-  // Gram-Schmidt step 2: re-derive right so the basis is perfectly orthonormal.
-  rightAxis.crossVectors(upAxis, normalAxis).normalize()
+  // Y — right-handed perpendicular: cross(Z, X)
+  const Y = new THREE.Vector3().crossVectors(Z, X).normalize()
 
-  // Build rotation matrix and extract quaternion.
-  // makeBasis(X, Y, Z) maps local axes to world axes:
-  //   local +X → rightAxis, local +Y → upAxis, local +Z → normalAxis
-  const matrix = new THREE.Matrix4().makeBasis(rightAxis, upAxis, normalAxis)
+  // Re-orthogonalize to purge residual non-orthogonality from landmark noise.
+  // Pass 1: correct X from the now-stable Y and Z.
+  // Pass 2: correct Z from the corrected X and Y.
+  X.crossVectors(Y, Z).normalize()
+  Z.crossVectors(X, Y).normalize()
+
+  // Build rotation matrix — makeBasis columns are the world directions for
+  // local +X, +Y, +Z respectively — then extract quaternion.
+  const matrix = new THREE.Matrix4().makeBasis(X, Y, Z)
   return new THREE.Quaternion().setFromRotationMatrix(matrix)
 }
+
+/**
+ * Same computation as computeWristQuaternion but returns the raw axis vectors
+ * and wrist origin instead of a quaternion.  Use this for debug visualization
+ * or any downstream code that needs explicit axis directions.
+ */
+export function computeWristAxes(
+  wrist: WorldCoordinates,
+  indexBase: WorldCoordinates,
+  pinkyBase: WorldCoordinates
+): WristAxes {
+  const wristVec = new THREE.Vector3(wrist.x, wrist.y, wrist.z)
+  const indexVec = new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z)
+  const pinkyVec = new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z)
+
+  const palmMidpoint = new THREE.Vector3()
+    .addVectors(indexVec, pinkyVec)
+    .multiplyScalar(0.5)
+
+  const Z = new THREE.Vector3().subVectors(palmMidpoint, wristVec).normalize()
+  const X = new THREE.Vector3().subVectors(pinkyVec, indexVec).normalize()
+  const Y = new THREE.Vector3().crossVectors(Z, X).normalize()
+  X.crossVectors(Y, Z).normalize()
+  Z.crossVectors(X, Y).normalize()
+
+  return {
+    xAxis: X,
+    yAxis: Y,
+    zAxis: Z,
+    origin: wristVec.clone(),
+  }
+}
+
+/**
+ * @deprecated Use computeWristQuaternion — identical math, canonical name.
+ */
+export const calculateWristQuaternion = computeWristQuaternion
 
 /**
  * Smooth coordinate transitions using linear interpolation

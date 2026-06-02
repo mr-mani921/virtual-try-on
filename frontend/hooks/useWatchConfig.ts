@@ -17,12 +17,26 @@ export interface WatchPreset {
 
 // Default presets for different watch types.
 //
-// rotationOffset semantics changed in Ticket 9A:
-// The new quaternion coordinate frame (calculateWristQuaternion) already maps
-// the model's local +Z to the palm normal (toward camera) and local +Y to the
-// forearm direction. The old Euler-based frame had Y and Z swapped, so the old
-// presets all carried rotationOffset.x = π/2 to compensate.
-// In the new frame that compensation is no longer needed — x offset is 0.
+// rotationOffset semantics updated for the computeWristQuaternion coordinate frame
+// (refactored from calculateWristQuaternion):
+//
+//   New frame local axes:
+//     +X  index → pinky  (hand-width direction)
+//     +Y  cross(Z, X)    (into palm / right-handed)
+//     +Z  wrist → palm midpoint  (forearm / finger direction)
+//
+//   Old frame local axes:
+//     +X  pinky → index  (opposite of new X)
+//     +Y  wrist → midKnuckle  (= new Z)
+//     +Z  cross(X_old, Y_old)  (= new Y)
+//
+// The two frames differ by the transformation M where:
+//   new X = −old X,  new Y = old Z,  new Z = old Y
+//
+// Solving R_offset_new = M_transition × R_offset_old gives:
+//   old { x:π,      y:0,    z:π/2 }  →  new { x:π/2,        y:0, z:π/2 }
+//   old { x:π,      y:α,    z:π/2 }  →  new { x:π/2 + α,    y:0, z:π/2 }
+// (old y-tilt around forearm = old local Y = new local Z → maps to new x)
 export const WATCH_PRESETS: Record<string, WatchPreset> = {
   default: {
     name: 'Default',
@@ -30,7 +44,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 2.5,
       positionOffset: { x: 0, y: 0, z: 0 },
-      rotationOffset: { x: Math.PI, y: 0, z: Math.PI / 2 },
+      rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
       smoothing: 0.3,
     },
   },
@@ -40,7 +54,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 1.8,
       positionOffset: { x: 0, y: 0.05, z: 0 },
-      rotationOffset: { x: Math.PI, y: 0, z: Math.PI / 2 },
+      rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
       smoothing: 0.3,
     },
   },
@@ -50,7 +64,8 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 1.4,
       positionOffset: { x: 0, y: -0.02, z: 0 },
-      rotationOffset: { x: Math.PI, y: Math.PI / 12, z: Math.PI / 2 },
+      // Old y:π/12 forearm-tilt maps to x:π/2 + π/12 in the new frame.
+      rotationOffset: { x: Math.PI / 2 + Math.PI / 12, y: 0, z: Math.PI / 2 },
       smoothing: 0.4,
     },
   },
@@ -60,7 +75,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 1.6,
       positionOffset: { x: 0, y: 0, z: 0.01 },
-      rotationOffset: { x: Math.PI, y: 0, z: Math.PI / 2 },
+      rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
       smoothing: 0.25,
     },
   },

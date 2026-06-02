@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import type { HandDetection } from '@/lib/mediapipe/types'
 import {
   landmarkToWorld,
-  calculateWristQuaternion,
+  computeWristQuaternion,
   type WorldCoordinates,
   type CoordinateMappingOptions,
 } from '@/lib/three/coordinateMapping'
@@ -60,7 +60,7 @@ export function useCoordinateMapping(
       mappingOptions
     )
 
-    const handOrientation = calculateWristQuaternion(
+    const handOrientation = computeWristQuaternion(
       wristPosition,
       indexBasePosition,
       pinkyBasePosition

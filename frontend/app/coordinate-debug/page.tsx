@@ -86,6 +86,8 @@ function CoordinateDebugScene({
           pinkyBasePosition={mappedData.pinkyBasePosition}
           allLandmarks={mappedData.allLandmarksWorld}
           showConnections={true}
+          handOrientation={mappedData.handOrientation}
+          showAxes={showDebugAxis}
         />
       )}
 
