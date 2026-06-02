@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync } from 'fs'
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, rmSync, unlinkSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -12,6 +12,16 @@ if (!existsSync(src)) {
 }
 
 mkdirSync(dirname(dest), { recursive: true })
+
+if (existsSync(dest)) {
+  const destStat = lstatSync(dest)
+  if (destStat.isDirectory()) {
+    rmSync(dest, { recursive: true, force: true })
+  } else {
+    unlinkSync(dest)
+  }
+}
+
 cpSync(src, dest, { force: true, recursive: true, dereference: true })
 
 const files = readdirSync(dest)
