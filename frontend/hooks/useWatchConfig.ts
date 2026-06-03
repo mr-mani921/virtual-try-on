@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import type { WatchCalibration } from '@/lib/three/watchCalibration'
 
-// Re-export the canonical calibration type under the name consumers already use.
-export type { WatchCalibration }
-export type WatchConfig = WatchCalibration
+export interface WatchConfig {
+  scale: number
+  positionOffset: { x: number; y: number; z: number }
+  rotationOffset: { x: number; y: number; z: number }
+  smoothing: number
+}
 
 export interface WatchPreset {
   name: string
@@ -13,32 +15,38 @@ export interface WatchPreset {
   config: WatchConfig
 }
 
-// ─── Wrist-frame axis reference ────────────────────────────────────────────────
-//   +X  index MCP → pinky MCP  (lateral / hand-width)
-//   +Y  cross(Z, X)             (into palm — depth into wrist)
-//   +Z  wrist → palm midpoint   (forearm direction)
+// Default presets for different watch types.
 //
-// positionOffset and occluderOffset are all in this LOCAL WRIST FRAME.
+// ── Coordinate frame (computeWristQuaternion) ─────────────────────────────────
+//   +X  index MCP → pinky MCP  (hand-width / lateral direction)
+//   +Y  cross(Z, X)             (into palm — the depth-into-wrist axis)
+//   +Z  wrist → palm midpoint   (forearm / along-arm direction)
 //
-// wristFitBias is additive to positionOffset.y:
-//   positive → watch sits deeper into wrist (thick / large-cased models)
-//   negative → watch sits more on the surface (slim / dress-watch models)
+// ── positionOffset semantics (LOCAL WRIST FRAME) ──────────────────────────────
+//   These are expressed in the wrist local frame and rotated to world space by
+//   handOrientation in WatchModel.useFrame — so offsets stay anchored to the
+//   wrist surface regardless of hand angle.
 //
-// rotationOffset is Euler XYZ, applied as: wristQuat × fromEuler(rotationOffset)
-// Derivation (M_transition from old frame):
-//   old { x:π,  y:0,   z:π/2 }  →  new { x:π/2,       y:0, z:π/2 }
-//   old { x:π,  y:α,   z:π/2 }  →  new { x:π/2 + α,   y:0, z:π/2 }
-
+//   x:  lateral shift along wrist width (positive = toward pinky)
+//   y:  depth into wrist (positive = toward palm = "sunk into wrist surface")
+//       This is the primary "wrap-around" dimension.  Increase to reduce hover.
+//   z:  shift along forearm (positive = toward fingers, negative = toward elbow)
+//
+// ── rotationOffset Euler (XYZ, applied as wristQuat × offsetQuat) ─────────────
+//   Derivation (M_transition × R_offset_old):
+//   old { x:π,    y:0,     z:π/2 }  →  new { x:π/2,       y:0, z:π/2 }
+//   old { x:π,    y:α,     z:π/2 }  →  new { x:π/2 + α,   y:0, z:π/2 }
 export const WATCH_PRESETS: Record<string, WatchPreset> = {
   default: {
     name: 'Default',
     description: 'Standard watch placement',
     config: {
       scale: 2.5,
+      // y: small push into wrist surface so it feels "on" not "hovering".
+      // z: negative offset positions watch lower (toward elbow) for realistic placement.
       positionOffset: { x: 0, y: 0.02, z: -0.05 },
-      rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
-      occluderOffset: { x: 0, y: 0, z: 0 },
-      wristFitBias:   0,
+      // x: π/2 + π/9 tilts watch face forward ~20° to face camera more directly
+      rotationOffset: { x: Math.PI / 2 + Math.PI / 9, y: 0, z: Math.PI / 2 },
       smoothing: 0.3,
     },
   },
@@ -47,11 +55,11 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     description: 'Larger, positioned higher on wrist',
     config: {
       scale: 1.8,
+      // z: shift toward fingers (higher on wrist in local frame).
+      // y: standard into-wrist depth.
       positionOffset: { x: 0, y: 0.02, z: 0.03 },
-      rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
-      // Bulkier case — sink a little deeper into wrist.
-      occluderOffset: { x: 0, y: 0.01, z: 0 },
-      wristFitBias:   0.01,
+      // x: π/2 + π/9 tilts watch face forward ~20° to face camera more directly
+      rotationOffset: { x: Math.PI / 2 + Math.PI / 9, y: 0, z: Math.PI / 2 },
       smoothing: 0.3,
     },
   },
@@ -60,10 +68,10 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     description: 'Elegant, slightly rotated',
     config: {
       scale: 1.4,
+      // z: shift toward elbow for elegant lower placement.
       positionOffset: { x: 0, y: 0.02, z: -0.06 },
-      rotationOffset: { x: Math.PI / 2 + Math.PI / 12, y: 0, z: Math.PI / 2 },
-      occluderOffset: { x: 0, y: 0, z: 0 },
-      wristFitBias:   -0.005,
+      // π/12 + π/9 combines original tilt with forward tilt to face camera
+      rotationOffset: { x: Math.PI / 2 + Math.PI / 12 + Math.PI / 9, y: 0, z: Math.PI / 2 },
       smoothing: 0.4,
     },
   },
@@ -73,9 +81,8 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 1.6,
       positionOffset: { x: 0, y: 0.02, z: -0.04 },
-      rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
-      occluderOffset: { x: 0, y: 0, z: 0 },
-      wristFitBias:   0,
+      // x: π/2 + π/9 tilts watch face forward ~20° to face camera more directly
+      rotationOffset: { x: Math.PI / 2 + Math.PI / 9, y: 0, z: Math.PI / 2 },
       smoothing: 0.25,
     },
   },
@@ -83,7 +90,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
 
 export function useWatchConfig(initialPreset: string = 'default') {
   const [config, setConfig] = useState<WatchConfig>(
-    WATCH_PRESETS[initialPreset]?.config ?? WATCH_PRESETS.default.config
+    WATCH_PRESETS[initialPreset]?.config || WATCH_PRESETS.default.config
   )
 
   const updateScale = useCallback((scale: number) => {
@@ -110,27 +117,15 @@ export function useWatchConfig(initialPreset: string = 'default') {
     []
   )
 
-  const updateOccluderOffset = useCallback(
-    (axis: 'x' | 'y' | 'z', value: number) => {
-      setConfig((prev) => ({
-        ...prev,
-        occluderOffset: { ...prev.occluderOffset, [axis]: value },
-      }))
-    },
-    []
-  )
-
-  const updateWristFitBias = useCallback((wristFitBias: number) => {
-    setConfig((prev) => ({ ...prev, wristFitBias }))
-  }, [])
-
   const updateSmoothing = useCallback((smoothing: number) => {
     setConfig((prev) => ({ ...prev, smoothing }))
   }, [])
 
   const loadPreset = useCallback((presetName: string) => {
     const preset = WATCH_PRESETS[presetName]
-    if (preset) setConfig(preset.config)
+    if (preset) {
+      setConfig(preset.config)
+    }
   }, [])
 
   const resetToDefault = useCallback(() => {
@@ -142,8 +137,6 @@ export function useWatchConfig(initialPreset: string = 'default') {
     updateScale,
     updatePositionOffset,
     updateRotationOffset,
-    updateOccluderOffset,
-    updateWristFitBias,
     updateSmoothing,
     loadPreset,
     resetToDefault,
