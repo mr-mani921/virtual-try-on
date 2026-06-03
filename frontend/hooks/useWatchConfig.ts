@@ -17,33 +17,34 @@ export interface WatchPreset {
 
 // Default presets for different watch types.
 //
-// rotationOffset semantics updated for the computeWristQuaternion coordinate frame
-// (refactored from calculateWristQuaternion):
+// ── Coordinate frame (computeWristQuaternion) ─────────────────────────────────
+//   +X  index MCP → pinky MCP  (hand-width / lateral direction)
+//   +Y  cross(Z, X)             (into palm — the depth-into-wrist axis)
+//   +Z  wrist → palm midpoint   (forearm / along-arm direction)
 //
-//   New frame local axes:
-//     +X  index → pinky  (hand-width direction)
-//     +Y  cross(Z, X)    (into palm / right-handed)
-//     +Z  wrist → palm midpoint  (forearm / finger direction)
+// ── positionOffset semantics (LOCAL WRIST FRAME) ──────────────────────────────
+//   These are expressed in the wrist local frame and rotated to world space by
+//   handOrientation in WatchModel.useFrame — so offsets stay anchored to the
+//   wrist surface regardless of hand angle.
 //
-//   Old frame local axes:
-//     +X  pinky → index  (opposite of new X)
-//     +Y  wrist → midKnuckle  (= new Z)
-//     +Z  cross(X_old, Y_old)  (= new Y)
+//   x:  lateral shift along wrist width (positive = toward pinky)
+//   y:  depth into wrist (positive = toward palm = "sunk into wrist surface")
+//       This is the primary "wrap-around" dimension.  Increase to reduce hover.
+//   z:  shift along forearm (positive = toward fingers, negative = toward elbow)
 //
-// The two frames differ by the transformation M where:
-//   new X = −old X,  new Y = old Z,  new Z = old Y
-//
-// Solving R_offset_new = M_transition × R_offset_old gives:
-//   old { x:π,      y:0,    z:π/2 }  →  new { x:π/2,        y:0, z:π/2 }
-//   old { x:π,      y:α,    z:π/2 }  →  new { x:π/2 + α,    y:0, z:π/2 }
-// (old y-tilt around forearm = old local Y = new local Z → maps to new x)
+// ── rotationOffset Euler (XYZ, applied as wristQuat × offsetQuat) ─────────────
+//   Derivation (M_transition × R_offset_old):
+//   old { x:π,    y:0,     z:π/2 }  →  new { x:π/2,       y:0, z:π/2 }
+//   old { x:π,    y:α,     z:π/2 }  →  new { x:π/2 + α,   y:0, z:π/2 }
 export const WATCH_PRESETS: Record<string, WatchPreset> = {
   default: {
     name: 'Default',
     description: 'Standard watch placement',
     config: {
       scale: 2.5,
-      positionOffset: { x: 0, y: 0, z: 0 },
+      // y: small push into wrist surface so it feels "on" not "hovering".
+      // z: no forearm offset — centered on wrist landmark.
+      positionOffset: { x: 0, y: 0.02, z: 0 },
       rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
       smoothing: 0.3,
     },
@@ -53,7 +54,9 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     description: 'Larger, positioned higher on wrist',
     config: {
       scale: 1.8,
-      positionOffset: { x: 0, y: 0.05, z: 0 },
+      // z: shift toward fingers (higher on wrist in local frame).
+      // y: standard into-wrist depth.
+      positionOffset: { x: 0, y: 0.02, z: 0.04 },
       rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
       smoothing: 0.3,
     },
@@ -63,8 +66,9 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     description: 'Elegant, slightly rotated',
     config: {
       scale: 1.4,
-      positionOffset: { x: 0, y: -0.02, z: 0 },
-      // Old y:π/12 forearm-tilt maps to x:π/2 + π/12 in the new frame.
+      // z: slight shift toward wrist base for an elegant lower placement.
+      positionOffset: { x: 0, y: 0.02, z: -0.02 },
+      // π/12 forearm-tilt: maps from old y to new x component (see derivation).
       rotationOffset: { x: Math.PI / 2 + Math.PI / 12, y: 0, z: Math.PI / 2 },
       smoothing: 0.4,
     },
@@ -74,7 +78,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     description: 'Modern, centered placement',
     config: {
       scale: 1.6,
-      positionOffset: { x: 0, y: 0, z: 0.01 },
+      positionOffset: { x: 0, y: 0.02, z: 0 },
       rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
       smoothing: 0.25,
     },

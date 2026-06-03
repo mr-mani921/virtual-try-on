@@ -47,6 +47,13 @@ export function WatchModel({
   const offsetQuatRef = useRef(new THREE.Quaternion())   // rotation offset
   const tempEulerRef = useRef(new THREE.Euler())         // offset → quat conversion
 
+  // Pre-allocated vector for rotating positionOffset from wrist local → world.
+  // positionOffset axes in the wrist frame:
+  //   x = lateral (toward pinky)
+  //   y = depth into palm / into wrist  ← the "wrap around wrist" dimension
+  //   z = along forearm (toward fingers)
+  const localOffsetVec = useRef(new THREE.Vector3())
+
   // Position stabilizer (One Euro filter + velocity-adaptive lerp)
   const stabilizer = useRef(new MotionStabilizer())
 
@@ -155,11 +162,26 @@ export function WatchModel({
 
     const timestamp = Date.now()
 
-    // --- Position with One Euro Filter + Velocity-Adaptive Smoothing ---
+    // --- Position: local-frame offset → world, then One Euro + velocity-adaptive lerp ---
+    //
+    // positionOffset is expressed in the WRIST LOCAL COORDINATE FRAME so that
+    // offsets remain anchored to the wrist surface regardless of wrist orientation:
+    //   x: lateral shift (toward pinky)
+    //   y: depth into palm (the "wrapped around wrist" dimension)
+    //   z: along forearm (toward fingers)
+    //
+    // Rotating by handOrientation converts the local offset to world space before
+    // adding it to the wrist position.  When handOrientation is unavailable the
+    // offset falls back to world-space (safe but rarely reached).
+    localOffsetVec.current.set(positionOffset.x, positionOffset.y, positionOffset.z)
+    if (handOrientation) {
+      localOffsetVec.current.applyQuaternion(handOrientation)
+    }
+
     const targetPos = {
-      x: wristPosition.x + positionOffset.x,
-      y: wristPosition.y + positionOffset.y,
-      z: wristPosition.z + positionOffset.z,
+      x: wristPosition.x + localOffsetVec.current.x,
+      y: wristPosition.y + localOffsetVec.current.y,
+      z: wristPosition.z + localOffsetVec.current.z,
     }
 
     // Apply One Euro low-pass filter to reduce jitter
