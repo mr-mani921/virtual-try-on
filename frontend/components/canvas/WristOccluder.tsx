@@ -5,7 +5,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { WorldCoordinates } from '@/lib/three/coordinateMapping'
 import { lerpWorldCoordinates } from '@/lib/three/coordinateMapping'
-import { MotionStabilizer } from '@/lib/three/motionSmoothing'
+import { MotionStabilizer, QuaternionSmoother } from '@/lib/three/motionSmoothing'
 
 interface WristOccluderProps {
   wristPosition: WorldCoordinates | null
@@ -25,8 +25,8 @@ interface WristOccluderProps {
  * feed). This makes the strap appear to wrap around the wrist.
  *
  * The cylinder is oriented using handOrientation directly (no rotationOffset)
- * so its local +Y stays aligned with the forearm direction from
- * calculateWristQuaternion. A unit geometry (radius=1, height=1) is scaled
+ * so its local +Z stays aligned with the forearm direction from
+ * computeWristQuaternion. A unit geometry (radius=1, height=1) is scaled
  * each frame via mesh.scale to avoid geometry recreation.
  */
 export function WristOccluder({
@@ -41,10 +41,12 @@ export function WristOccluder({
   const occluderRef = useRef<THREE.Mesh>(null)
 
   const currentPosRef = useRef<WorldCoordinates | null>(null)
-  const currentQuatRef = useRef(new THREE.Quaternion())
-  const rotationInitializedRef = useRef(false)
 
+  // Position stabilizer (One Euro filter + velocity-adaptive lerp)
   const stabilizer = useRef(new MotionStabilizer())
+
+  // Rotation smoother: pure quaternion slerp with sign correction.
+  const quatSmoother = useRef(new QuaternionSmoother())
 
   // Pre-allocated vectors to avoid per-frame heap allocations
   const indexVecRef = useRef(new THREE.Vector3())
@@ -69,19 +71,12 @@ export function WristOccluder({
       currentPosRef.current = { ...filteredPos }
     }
 
-    // --- Rotation: handOrientation directly (no rotationOffset) ---
-    // CylinderGeometry local +Y already maps to the forearm direction in wristQuat.
+    // --- Rotation: pure quaternion slerp with sign correction ---
+    // handOrientation is used directly (no rotationOffset) so the cylinder's
+    // local +Z stays aligned with the forearm direction from computeWristQuaternion.
     if (handOrientation) {
-      const filteredQuat = stabilizer.current.filterRotation(handOrientation, timestamp)
-
-      if (!rotationInitializedRef.current) {
-        currentQuatRef.current.copy(filteredQuat)
-        rotationInitializedRef.current = true
-      } else {
-        currentQuatRef.current.slerp(filteredQuat, smoothing * 1.2)
-      }
-
-      groupRef.current.quaternion.copy(currentQuatRef.current)
+      const smoothedQuat = quatSmoother.current.update(handOrientation, smoothing)
+      groupRef.current.quaternion.copy(smoothedQuat)
     }
 
     // --- Scale unit cylinder to match wrist anatomy each frame ---

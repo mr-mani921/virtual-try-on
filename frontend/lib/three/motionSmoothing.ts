@@ -193,6 +193,85 @@ export class VelocityAdaptiveSmoothing {
 }
 
 /**
+ * Frame-to-frame quaternion smoother using pure slerp with explicit dot-product
+ * sign correction.
+ *
+ * Why sign correction matters
+ * ───────────────────────────
+ * A unit quaternion Q and −Q represent the same rotation in SO(3), but they
+ * live on opposite poles of the 4D unit sphere (S³).  Slerp always travels
+ * along the SHORTER arc, but only if the two quaternions are in the same
+ * hemisphere (dot ≥ 0).  If the raw target flips hemisphere between frames
+ * (dot < 0), naïve slerp would travel the LONG way round, causing a visible
+ * 360° spin artefact.  Negating the target before slerp brings it to the same
+ * hemisphere without changing the represented rotation.
+ *
+ * Algorithm (per frame)
+ * ─────────────────────
+ *   1. if dot(previous, current) < 0 → negate current
+ *   2. smoothed = slerp(previous, current, factor)   factor ∈ [0, 1]
+ *   3. previous = smoothed
+ *   4. return smoothed
+ *
+ * factor = 0 → stays at previous (maximum damping)
+ * factor = 1 → snaps to current  (no smoothing)
+ * Recommended range: 0.15 – 0.35
+ *
+ * All quaternion objects are pre-allocated at construction; update() never
+ * allocates on the heap, making it safe to call every animation frame.
+ */
+export class QuaternionSmoother {
+  private previous: THREE.Quaternion | null = null
+  // result and signCorrected are reused every frame — no GC on hot path.
+  private readonly result = new THREE.Quaternion()
+  private readonly signCorrected = new THREE.Quaternion()
+
+  constructor(private readonly defaultFactor: number = 0.25) {}
+
+  /**
+   * Advance the smoother by one frame.
+   *
+   * @param current  Raw target quaternion for this frame (not mutated).
+   * @param factor   Slerp weight.  Defaults to the constructor value.
+   * @returns        Smoothed quaternion (reference is stable until next call).
+   */
+  update(current: THREE.Quaternion, factor: number = this.defaultFactor): THREE.Quaternion {
+    // First frame: snap immediately — no previous state to blend from.
+    if (this.previous === null) {
+      this.previous = current.clone()
+      this.result.copy(current)
+      return this.result
+    }
+
+    // ── Sign correction ──────────────────────────────────────────────────────
+    // dot < 0 means previous and current are in opposite S³ hemispheres.
+    // Negate current so slerp takes the short arc (< 180°) instead of long arc.
+    const dot = this.previous.dot(current)
+    if (dot < 0) {
+      this.signCorrected.set(-current.x, -current.y, -current.z, -current.w)
+    } else {
+      this.signCorrected.copy(current)
+    }
+
+    // ── Slerp ────────────────────────────────────────────────────────────────
+    // Interpolate from previous toward (sign-corrected) current by `factor`.
+    this.result.copy(this.previous).slerp(this.signCorrected, factor)
+
+    // Store smoothed result as previous for the next frame.
+    this.previous.copy(this.result)
+
+    return this.result
+  }
+
+  /** Reset to uninitialized state (e.g. when hand tracking is lost). */
+  reset(): void {
+    this.previous = null
+    this.result.set(0, 0, 0, 1)
+    this.signCorrected.set(0, 0, 0, 1)
+  }
+}
+
+/**
  * Combined stabilizer: One Euro Filter + Velocity-Adaptive Slerp
  */
 export class MotionStabilizer {

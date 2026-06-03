@@ -6,7 +6,7 @@ import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import type { WorldCoordinates } from '@/lib/three/coordinateMapping'
 import { lerpWorldCoordinates } from '@/lib/three/coordinateMapping'
-import { MotionStabilizer } from '@/lib/three/motionSmoothing'
+import { MotionStabilizer, QuaternionSmoother } from '@/lib/three/motionSmoothing'
 
 interface WatchModelProps {
   wristPosition: WorldCoordinates | null
@@ -41,14 +41,18 @@ export function WatchModel({
 
   // Per-frame state lives in refs — never in React state — to avoid 60fps re-renders.
   const currentPosRef = useRef<WorldCoordinates | null>(null)
-  const currentQuatRef = useRef(new THREE.Quaternion())
-  const targetQuatRef = useRef(new THREE.Quaternion())
-  const offsetQuatRef = useRef(new THREE.Quaternion())
-  const tempEulerRef = useRef(new THREE.Euler())
-  const rotationInitializedRef = useRef(false)
 
-  // Motion stabilizer for advanced smoothing
+  // Rotation pipeline refs — all pre-allocated so useFrame never hits the heap.
+  const targetQuatRef = useRef(new THREE.Quaternion())   // raw composed target
+  const offsetQuatRef = useRef(new THREE.Quaternion())   // rotation offset
+  const tempEulerRef = useRef(new THREE.Euler())         // offset → quat conversion
+
+  // Position stabilizer (One Euro filter + velocity-adaptive lerp)
   const stabilizer = useRef(new MotionStabilizer())
+
+  // Rotation smoother: pure quaternion slerp with sign correction.
+  // Maintains previousQuaternion across frames; update() returns smoothedQuaternion.
+  const quatSmoother = useRef(new QuaternionSmoother())
 
   // Stores the 1/maxDim normalization factor so useFrame can apply final scale
   // without triggering a model re-clone.
@@ -174,26 +178,20 @@ export function WatchModel({
       currentPosRef.current = { ...filteredPos }
     }
 
-    // --- Rotation with One Euro Filter + Quaternion Slerp ---
+    // --- Rotation: pure quaternion slerp with sign correction ---
     if (handOrientation) {
-      // Compose: wrist world orientation * local rotation offset
+      // Step 1: compose wrist orientation × local rotation offset.
       tempEulerRef.current.set(rotationOffset.x, rotationOffset.y, rotationOffset.z)
       offsetQuatRef.current.setFromEuler(tempEulerRef.current)
       targetQuatRef.current.multiplyQuaternions(handOrientation, offsetQuatRef.current)
 
-      // Apply One Euro filter to rotation for smooth tracking
-      const filteredQuat = stabilizer.current.filterRotation(targetQuatRef.current, timestamp)
+      // Step 2: smooth via QuaternionSmoother.
+      //   - previousQuaternion is stored inside quatSmoother across frames.
+      //   - dot-product sign check ensures we always take the SHORT arc.
+      //   - smoothing ∈ [0.15, 0.35] is the recommended operating range.
+      const smoothedQuat = quatSmoother.current.update(targetQuatRef.current, smoothing)
 
-      if (!rotationInitializedRef.current) {
-        // Snap to the first valid orientation
-        currentQuatRef.current.copy(filteredQuat)
-        rotationInitializedRef.current = true
-      } else {
-        // Slerp with filtered quaternion (double-smoothing for ultra-stable rotation)
-        currentQuatRef.current.slerp(filteredQuat, smoothing * 1.2)
-      }
-
-      groupRef.current.quaternion.copy(currentQuatRef.current)
+      groupRef.current.quaternion.copy(smoothedQuat)
     }
 
     // --- Scale (applied to modelRef so normalizedScale from useMemo is preserved) ---
