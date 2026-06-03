@@ -43,8 +43,8 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     config: {
       scale: 2.5,
       // y: small push into wrist surface so it feels "on" not "hovering".
-      // z: no forearm offset — centered on wrist landmark.
-      positionOffset: { x: 0, y: 0.02, z: 0 },
+      // z: negative offset positions watch lower (toward elbow) for realistic placement.
+      positionOffset: { x: 0, y: 0.02, z: -0.05 },
       rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
       smoothing: 0.3,
     },
@@ -56,7 +56,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
       scale: 1.8,
       // z: shift toward fingers (higher on wrist in local frame).
       // y: standard into-wrist depth.
-      positionOffset: { x: 0, y: 0.02, z: 0.04 },
+      positionOffset: { x: 0, y: 0.02, z: 0.03 },
       rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
       smoothing: 0.3,
     },
@@ -66,8 +66,8 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     description: 'Elegant, slightly rotated',
     config: {
       scale: 1.4,
-      // z: slight shift toward wrist base for an elegant lower placement.
-      positionOffset: { x: 0, y: 0.02, z: -0.02 },
+      // z: shift toward elbow for elegant lower placement.
+      positionOffset: { x: 0, y: 0.02, z: -0.06 },
       // π/12 forearm-tilt: maps from old y to new x component (see derivation).
       rotationOffset: { x: Math.PI / 2 + Math.PI / 12, y: 0, z: Math.PI / 2 },
       smoothing: 0.4,
@@ -78,7 +78,7 @@ export const WATCH_PRESETS: Record<string, WatchPreset> = {
     description: 'Modern, centered placement',
     config: {
       scale: 1.6,
-      positionOffset: { x: 0, y: 0.02, z: 0 },
+      positionOffset: { x: 0, y: 0.02, z: -0.04 },
       rotationOffset: { x: Math.PI / 2, y: 0, z: Math.PI / 2 },
       smoothing: 0.25,
     },
