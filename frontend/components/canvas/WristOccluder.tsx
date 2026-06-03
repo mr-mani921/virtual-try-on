@@ -17,20 +17,33 @@ interface WristOccluderProps {
 }
 
 /**
- * Invisible depth-mask cylinder that creates a realistic occlusion illusion.
+ * Invisible depth-mask ellipsoid that creates a realistic forearm-volume
+ * occlusion illusion.
  *
  * Renders at renderOrder=-1 (before the watch) with colorWrite=false and
- * depthWrite=true. Watch fragments that fall behind the occluder surface fail
+ * depthWrite=true.  Watch fragments that fall behind the occluder surface fail
  * the depth test and are discarded, revealing the transparent canvas (camera
- * feed). This makes the strap appear to wrap around the wrist.
+ * feed) so the strap appears to wrap around the wrist.
  *
- * Uses a simple cylinder positioned slightly behind the wrist center to provide
- * occlusion for watch straps while avoiding over-occlusion of the watch face.
+ * ── Orientation ───────────────────────────────────────────────────────────────
+ * The GROUP quaternion is set to handOrientation so the group's local frame
+ * matches the wrist frame (computeWristQuaternion):
+ *   group +X = lateral  (index → pinky)
+ *   group +Y = into palm
+ *   group +Z = forearm direction
  *
- * The cylinder is oriented using handOrientation directly (no rotationOffset)
- * so its local +Z stays aligned with the forearm direction from
- * computeWristQuaternion. A unit geometry (radius=1, height=1) is scaled
- * each frame via mesh.scale to avoid geometry recreation.
+ * CylinderGeometry has its height axis along MESH local +Y.  Adding a static
+ * Rx(π/2) rotation on the mesh tilts that height axis to align with group +Z
+ * (forearm).  After the rotation the mesh scale axes map as:
+ *   scaleX → group +X  (lateral hand-width)   — wider
+ *   scaleY → group +Z  (forearm length)        — segment length along arm
+ *   scaleZ → group +Y  (AP / into-palm depth)  — thinner = elliptical cross-section
+ *
+ * ── Palm-side offset ──────────────────────────────────────────────────────────
+ * The mesh is shifted +Y (into palm) in group space so the occluder sits
+ * slightly inside the wrist volume.  This ensures strap fragments wrapping
+ * around the inner wrist are caught by the depth test without over-occluding
+ * the watch face on the back of the hand.
  */
 export function WristOccluder({
   wristPosition,
@@ -82,25 +95,41 @@ export function WristOccluder({
       groupRef.current.quaternion.copy(smoothedQuat)
     }
 
-    // --- Scale cylinder to match wrist anatomy each frame ---
+    // --- Scale ellipsoid to anatomical forearm volume each frame ---
+    //
+    // After mesh Rx(π/2) the scale axes map as:
+    //   scaleX → group +X  (lateral)
+    //   scaleY → group +Z  (forearm length along arm)
+    //   scaleZ → group −Y  (toward camera) AND group +Y (into palm)
+    //            ← scaleZ controls how far the front face protrudes toward camera!
+    //
+    // CRITICAL depth relationship:
+    //   front face y = palmOffset − scaleZ/2
+    //   back  face y = palmOffset + scaleZ/2
+    //
+    // Setting palmOffset = scaleZ/2 makes:
+    //   front face y = 0  (exactly at wrist centre — no protrusion toward camera)
+    //   back  face y = scaleZ (into wrist volume / palm side)
+    //
+    // Only fragments with depth > front-face depth are discarded.
+    // Watch face and top strap (y < 0, toward camera) → pass depth test ✓
+    // Inner wrist strap          (y > 0, into palm)  → fail depth test ✓
     if (occluderRef.current && indexBasePosition && pinkyBasePosition) {
       indexVecRef.current.set(indexBasePosition.x, indexBasePosition.y, indexBasePosition.z)
       pinkyVecRef.current.set(pinkyBasePosition.x, pinkyBasePosition.y, pinkyBasePosition.z)
 
       const knuckleWidth = indexVecRef.current.distanceTo(pinkyVecRef.current)
 
-      // Adult anatomy: wrist circumference creates a cylinder radius of ~40-45% 
-      // of knuckle width. Increased to match actual wrist volume so watch 
-      // appears properly wrapped around the wrist surface, not floating above it.
-      const wristRadius = knuckleWidth * 0.44
-      const cylinderHeight = knuckleWidth * 0.7
+      const scaleX = knuckleWidth * 0.9    // lateral — roughly matches wrist width
+      const scaleY = knuckleWidth * 1.2    // forearm segment length
+      const scaleZ = knuckleWidth * 0.35   // AP depth — kept thin to prevent over-occlusion
 
-      occluderRef.current.scale.set(wristRadius, cylinderHeight, wristRadius)
-      
-      // Push the cylinder slightly back (toward palm) to better occlude the
-      // back side during rotations without blocking the watch face from front.
-      // Reduced offset now that radius is larger.
-      occluderRef.current.position.z = wristRadius * 0.08
+      occluderRef.current.scale.set(scaleX, scaleY, scaleZ)
+
+      // palmOffset = scaleZ/2 → front face lands at group y = 0 (wrist centre).
+      // The occluder volume occupies only y ∈ [0, scaleZ], i.e. purely into the
+      // wrist — it never protrudes toward the camera regardless of hand distance.
+      occluderRef.current.position.set(0, scaleZ / 2, 0)
     }
   })
 
@@ -108,8 +137,17 @@ export function WristOccluder({
 
   return (
     <group ref={groupRef}>
-      <mesh ref={occluderRef} renderOrder={-1}>
-        <cylinderGeometry args={[1, 1, 1, 32, 1]} />
+      {/*
+        rotation={[Math.PI / 2, 0, 0]}: static Rx(π/2) tilts the cylinder's
+        height axis (mesh local +Y) to align with the group's forearm direction
+        (+Z).  scale is applied in mesh local space, so after this rotation:
+          scaleX → lateral (group +X)
+          scaleY → forearm (group +Z)
+          scaleZ → into-palm depth (group +Y)  ← produces elliptical cross-section
+        16 radial segments is sufficient for a smooth ellipse after non-uniform scaling.
+      */}
+      <mesh ref={occluderRef} rotation={[Math.PI / 2, 0, 0]} renderOrder={-1}>
+        <cylinderGeometry args={[1, 1, 1, 16, 1]} />
         <meshBasicMaterial colorWrite={false} depthWrite={true} />
       </mesh>
     </group>
