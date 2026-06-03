@@ -9,6 +9,8 @@ interface WatchControlsProps {
   onScaleChange: (scale: number) => void
   onPositionChange: (axis: 'x' | 'y' | 'z', value: number) => void
   onRotationChange: (axis: 'x' | 'y' | 'z', value: number) => void
+  onWristFitBiasChange: (bias: number) => void
+  onOccluderOffsetChange: (axis: 'x' | 'y' | 'z', value: number) => void
   onSmoothingChange: (smoothing: number) => void
   onReset: () => void
   onLoadPreset: (preset: string) => void
@@ -20,6 +22,8 @@ export function WatchControls({
   onScaleChange,
   onPositionChange,
   onRotationChange,
+  onWristFitBiasChange,
+  onOccluderOffsetChange,
   onSmoothingChange,
   onReset,
   onLoadPreset,
@@ -172,6 +176,78 @@ export function WatchControls({
                   value={config.rotationOffset.z}
                   onChange={(e) => onRotationChange('z', parseFloat(e.target.value))}
                   className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Wrist Fit Bias */}
+          <div>
+            <label className="text-xs text-zinc-400 mb-1 block">
+              Wrist Fit Bias: {config.wristFitBias.toFixed(3)}
+            </label>
+            <input
+              type="range"
+              min="-0.1"
+              max="0.1"
+              step="0.005"
+              value={config.wristFitBias}
+              onChange={(e) => onWristFitBiasChange(parseFloat(e.target.value))}
+              className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-rose-500"
+            />
+            <div className="flex justify-between text-[10px] text-zinc-500 mt-1">
+              <span>Slim / surface</span>
+              <span>Bulky / deep</span>
+            </div>
+          </div>
+
+          {/* Occluder Offset (Y = depth, most commonly tuned axis) */}
+          <div>
+            <label className="text-xs text-zinc-400 mb-2 block">Occluder Fine-Tune</label>
+            <div className="space-y-2">
+              <div>
+                <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
+                  <span>Depth (Y into wrist)</span>
+                  <span>{config.occluderOffset.y.toFixed(3)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="-0.1"
+                  max="0.1"
+                  step="0.005"
+                  value={config.occluderOffset.y}
+                  onChange={(e) => onOccluderOffsetChange('y', parseFloat(e.target.value))}
+                  className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-teal-500"
+                />
+              </div>
+              <div>
+                <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
+                  <span>Lateral (X)</span>
+                  <span>{config.occluderOffset.x.toFixed(3)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="-0.1"
+                  max="0.1"
+                  step="0.005"
+                  value={config.occluderOffset.x}
+                  onChange={(e) => onOccluderOffsetChange('x', parseFloat(e.target.value))}
+                  className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-teal-500"
+                />
+              </div>
+              <div>
+                <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
+                  <span>Forearm (Z)</span>
+                  <span>{config.occluderOffset.z.toFixed(3)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="-0.2"
+                  max="0.2"
+                  step="0.005"
+                  value={config.occluderOffset.z}
+                  onChange={(e) => onOccluderOffsetChange('z', parseFloat(e.target.value))}
+                  className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-teal-500"
                 />
               </div>
             </div>

@@ -7,6 +7,11 @@ import * as THREE from 'three'
 import type { WorldCoordinates } from '@/lib/three/coordinateMapping'
 import { lerpWorldCoordinates } from '@/lib/three/coordinateMapping'
 import { MotionStabilizer, QuaternionSmoother } from '@/lib/three/motionSmoothing'
+import {
+  computeTargetPosition,
+  computeTargetRotation,
+  wristTransformFromCoords,
+} from '@/lib/three/watchCalibration'
 
 interface WatchModelProps {
   wristPosition: WorldCoordinates | null
@@ -18,6 +23,12 @@ interface WatchModelProps {
   useDynamicScaling?: boolean
   positionOffset?: { x: number; y: number; z: number }
   rotationOffset?: { x: number; y: number; z: number }
+  /**
+   * Per-watch wrist-fit bias (additive on positionOffset.y).
+   * Positive = sits deeper into wrist (bulky models).
+   * Negative = sits more on the surface (slim models).
+   */
+  wristFitBias?: number
   showDebugAxis?: boolean
   modelPath?: string
 }
@@ -32,6 +43,7 @@ export function WatchModel({
   useDynamicScaling = false,
   positionOffset = { x: 0, y: 0, z: 0 },
   rotationOffset = { x: 0, y: 0, z: 0 },
+  wristFitBias = 0,
   showDebugAxis = false,
   modelPath = '/models/watch.glb',
 }: WatchModelProps) {
@@ -42,17 +54,19 @@ export function WatchModel({
   // Per-frame state lives in refs — never in React state — to avoid 60fps re-renders.
   const currentPosRef = useRef<WorldCoordinates | null>(null)
 
-  // Rotation pipeline refs — all pre-allocated so useFrame never hits the heap.
-  const targetQuatRef = useRef(new THREE.Quaternion())   // raw composed target
-  const offsetQuatRef = useRef(new THREE.Quaternion())   // rotation offset
-  const tempEulerRef = useRef(new THREE.Euler())         // offset → quat conversion
+  // ── Calibration helpers (pre-allocated, zero GC in the render loop) ─────────
+  // wristTransformVec mirrors wristPosition as a THREE.Vector3 so it can be
+  // passed to the pure calibration helpers without allocating each frame.
+  const wristTransformVec = useRef(new THREE.Vector3())
 
-  // Pre-allocated vector for rotating positionOffset from wrist local → world.
-  // positionOffset axes in the wrist frame:
-  //   x = lateral (toward pinky)
-  //   y = depth into palm / into wrist  ← the "wrap around wrist" dimension
-  //   z = along forearm (toward fingers)
-  const localOffsetVec = useRef(new THREE.Vector3())
+  // Position pipeline
+  const localOffsetVec = useRef(new THREE.Vector3())   // temp for local→world rotation
+  const targetPosVec   = useRef(new THREE.Vector3())   // result from computeTargetPosition
+
+  // Rotation pipeline
+  const targetQuatRef  = useRef(new THREE.Quaternion()) // result from computeTargetRotation
+  const offsetQuatRef  = useRef(new THREE.Quaternion()) // temp inside computeTargetRotation
+  const tempEulerRef   = useRef(new THREE.Euler())      // temp inside computeTargetRotation
 
   // Position stabilizer (One Euro filter + velocity-adaptive lerp)
   const stabilizer = useRef(new MotionStabilizer())
@@ -162,36 +176,36 @@ export function WatchModel({
 
     const timestamp = Date.now()
 
-    // --- Position: local-frame offset → world, then One Euro + velocity-adaptive lerp ---
-    //
-    // positionOffset is expressed in the WRIST LOCAL COORDINATE FRAME so that
-    // offsets remain anchored to the wrist surface regardless of wrist orientation:
-    //   x: lateral shift (toward pinky)
-    //   y: depth into palm (the "wrapped around wrist" dimension)
-    //   z: along forearm (toward fingers)
-    //
-    // Rotating by handOrientation converts the local offset to world space before
-    // adding it to the wrist position.  When handOrientation is unavailable the
-    // offset falls back to world-space (safe but rarely reached).
-    localOffsetVec.current.set(positionOffset.x, positionOffset.y, positionOffset.z)
-    if (handOrientation) {
-      localOffsetVec.current.applyQuaternion(handOrientation)
-    }
+    // ── Step 1: build wrist transform (position + quaternion, no allocation) ───
+    const wristTransform = wristTransformFromCoords(
+      wristPosition,
+      handOrientation,
+      wristTransformVec.current,
+    )
+
+    // ── Step 2: compute calibrated target position (local frame → world) ──────
+    // positionOffset (wrist local frame) + wristFitBias (into-wrist depth bias)
+    // are rotated by handOrientation so offsets stay anchored to the wrist
+    // surface regardless of hand angle.
+    computeTargetPosition(
+      wristTransform,
+      { positionOffset, wristFitBias },
+      localOffsetVec.current,
+      targetPosVec.current,
+    )
 
     const targetPos = {
-      x: wristPosition.x + localOffsetVec.current.x,
-      y: wristPosition.y + localOffsetVec.current.y,
-      z: wristPosition.z + localOffsetVec.current.z,
+      x: targetPosVec.current.x,
+      y: targetPosVec.current.y,
+      z: targetPosVec.current.z,
     }
 
-    // Apply One Euro low-pass filter to reduce jitter
+    // ── Step 3: One Euro filter + velocity-adaptive lerp ─────────────────────
     const filteredPos = stabilizer.current.filterPosition(targetPos, timestamp)
 
     if (currentPosRef.current) {
-      // Get velocity-adaptive alpha (faster motion = higher alpha = more responsive)
       const adaptiveAlpha = stabilizer.current.getAdaptiveAlpha(filteredPos, timestamp)
       const effectiveSmoothing = Math.max(smoothing, adaptiveAlpha)
-      
       const smoothed = lerpWorldCoordinates(currentPosRef.current, filteredPos, effectiveSmoothing)
       groupRef.current.position.set(smoothed.x, smoothed.y, smoothed.z)
       currentPosRef.current = smoothed
@@ -200,19 +214,18 @@ export function WatchModel({
       currentPosRef.current = { ...filteredPos }
     }
 
-    // --- Rotation: pure quaternion slerp with sign correction ---
+    // ── Step 4: compute calibrated target rotation ────────────────────────────
     if (handOrientation) {
-      // Step 1: compose wrist orientation × local rotation offset.
-      tempEulerRef.current.set(rotationOffset.x, rotationOffset.y, rotationOffset.z)
-      offsetQuatRef.current.setFromEuler(tempEulerRef.current)
-      targetQuatRef.current.multiplyQuaternions(handOrientation, offsetQuatRef.current)
+      computeTargetRotation(
+        wristTransform,
+        { rotationOffset },
+        tempEulerRef.current,
+        offsetQuatRef.current,
+        targetQuatRef.current,
+      )
 
-      // Step 2: smooth via QuaternionSmoother.
-      //   - previousQuaternion is stored inside quatSmoother across frames.
-      //   - dot-product sign check ensures we always take the SHORT arc.
-      //   - smoothing ∈ [0.15, 0.35] is the recommended operating range.
+      // ── Step 5: quaternion slerp with dot-product sign correction ──────────
       const smoothedQuat = quatSmoother.current.update(targetQuatRef.current, smoothing)
-
       groupRef.current.quaternion.copy(smoothedQuat)
     }
 

@@ -107,6 +107,7 @@ function CoordinateDebugScene({
             handOrientation={mappedData.handOrientation}
             indexBasePosition={mappedData.indexBasePosition}
             pinkyBasePosition={mappedData.pinkyBasePosition}
+            occluderOffset={watchConfig.occluderOffset}
             smoothing={watchConfig.smoothing}
           />
           <WatchModel
@@ -119,6 +120,7 @@ function CoordinateDebugScene({
             useDynamicScaling={useDynamicScaling}
             positionOffset={watchConfig.positionOffset}
             rotationOffset={watchConfig.rotationOffset}
+            wristFitBias={watchConfig.wristFitBias}
             showDebugAxis={showDebugAxis}
           />
         </>
@@ -558,6 +560,8 @@ export default function CoordinateDebugPage() {
                 onScaleChange={watchConfig.updateScale}
                 onPositionChange={watchConfig.updatePositionOffset}
                 onRotationChange={watchConfig.updateRotationOffset}
+                onWristFitBiasChange={watchConfig.updateWristFitBias}
+                onOccluderOffsetChange={watchConfig.updateOccluderOffset}
                 onSmoothingChange={watchConfig.updateSmoothing}
                 onReset={watchConfig.resetToDefault}
                 onLoadPreset={watchConfig.loadPreset}

@@ -12,6 +12,14 @@ interface WristOccluderProps {
   handOrientation?: THREE.Quaternion | null
   indexBasePosition?: WorldCoordinates | null
   pinkyBasePosition?: WorldCoordinates | null
+  /**
+   * Per-watch fine-tuning of the occluder's local position (wrist frame).
+   * Added on top of the auto-computed palm offset.
+   *   x: lateral bias
+   *   y: additional depth into wrist (positive = deeper)
+   *   z: forearm-direction shift
+   */
+  occluderOffset?: { x: number; y: number; z: number }
   smoothing?: number
   enabled?: boolean
 }
@@ -50,6 +58,7 @@ export function WristOccluder({
   handOrientation,
   indexBasePosition,
   pinkyBasePosition,
+  occluderOffset = { x: 0, y: 0, z: 0 },
   smoothing = 0.3,
   enabled = true,
 }: WristOccluderProps) {
@@ -126,10 +135,15 @@ export function WristOccluder({
 
       occluderRef.current.scale.set(scaleX, scaleY, scaleZ)
 
-      // palmOffset = scaleZ/2 → front face lands at group y = 0 (wrist centre).
-      // The occluder volume occupies only y ∈ [0, scaleZ], i.e. purely into the
-      // wrist — it never protrudes toward the camera regardless of hand distance.
-      occluderRef.current.position.set(0, scaleZ / 2, 0)
+      // palmOffset = scaleZ/2 → front face at group y=0 (wrist centre), no camera protrusion.
+      // occluderOffset adds a per-watch bias on top (wrist local frame):
+      //   y: additional depth into wrist (positive = front face retreats toward palm)
+      //   x/z: lateral or forearm fine-tuning
+      occluderRef.current.position.set(
+        occluderOffset.x,
+        scaleZ / 2 + occluderOffset.y,
+        occluderOffset.z,
+      )
     }
   })
 

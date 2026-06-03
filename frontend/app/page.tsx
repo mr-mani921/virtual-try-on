@@ -61,6 +61,7 @@ function ARScene({
             handOrientation={mappedData.handOrientation}
             indexBasePosition={mappedData.indexBasePosition}
             pinkyBasePosition={mappedData.pinkyBasePosition}
+            occluderOffset={watchConfig.occluderOffset}
             smoothing={watchConfig.smoothing}
           />
           <WatchModel
@@ -73,6 +74,7 @@ function ARScene({
             useDynamicScaling={useDynamicScaling}
             positionOffset={watchConfig.positionOffset}
             rotationOffset={watchConfig.rotationOffset}
+            wristFitBias={watchConfig.wristFitBias}
             showDebugAxis={false}
           />
         </>
