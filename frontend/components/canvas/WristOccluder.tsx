@@ -20,9 +20,12 @@ interface WristOccluderProps {
  * Invisible depth-mask cylinder that creates a realistic occlusion illusion.
  *
  * Renders at renderOrder=-1 (before the watch) with colorWrite=false and
- * depthWrite=true. Watch fragments that fall behind the cylinder surface fail
+ * depthWrite=true. Watch fragments that fall behind the occluder surface fail
  * the depth test and are discarded, revealing the transparent canvas (camera
  * feed). This makes the strap appear to wrap around the wrist.
+ *
+ * Uses a simple cylinder positioned slightly behind the wrist center to provide
+ * occlusion for watch straps while avoiding over-occlusion of the watch face.
  *
  * The cylinder is oriented using handOrientation directly (no rotationOffset)
  * so its local +Z stays aligned with the forearm direction from
@@ -79,19 +82,25 @@ export function WristOccluder({
       groupRef.current.quaternion.copy(smoothedQuat)
     }
 
-    // --- Scale unit cylinder to match wrist anatomy each frame ---
+    // --- Scale cylinder to match wrist anatomy each frame ---
     if (occluderRef.current && indexBasePosition && pinkyBasePosition) {
       indexVecRef.current.set(indexBasePosition.x, indexBasePosition.y, indexBasePosition.z)
       pinkyVecRef.current.set(pinkyBasePosition.x, pinkyBasePosition.y, pinkyBasePosition.z)
 
       const knuckleWidth = indexVecRef.current.distanceTo(pinkyVecRef.current)
 
-      // Adult anatomy: wrist radius ≈ 35% of knuckle width.
-      // Height covers the watch band area without clipping the case.
-      const wristRadius = knuckleWidth * 0.35
+      // Adult anatomy: wrist circumference creates a cylinder radius of ~40-45% 
+      // of knuckle width. Increased to match actual wrist volume so watch 
+      // appears properly wrapped around the wrist surface, not floating above it.
+      const wristRadius = knuckleWidth * 0.44
       const cylinderHeight = knuckleWidth * 0.7
 
       occluderRef.current.scale.set(wristRadius, cylinderHeight, wristRadius)
+      
+      // Push the cylinder slightly back (toward palm) to better occlude the
+      // back side during rotations without blocking the watch face from front.
+      // Reduced offset now that radius is larger.
+      occluderRef.current.position.z = wristRadius * 0.08
     }
   })
 
