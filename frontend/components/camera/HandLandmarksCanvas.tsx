@@ -1,0 +1,160 @@
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import type { HandDetection } from '@/lib/mediapipe/types'
+
+interface HandLandmarksCanvasProps {
+  handDetection: HandDetection | null
+  videoElement: HTMLVideoElement | null
+  width?: number
+  height?: number
+}
+
+export function HandLandmarksCanvas({
+  handDetection,
+  videoElement,
+  width = 1280,
+  height = 720,
+}: HandLandmarksCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [fps, setFps] = useState(0)
+  const frameTimesRef = useRef<number[]>([])
+  const lastUpdateRef = useRef<number>(Date.now())
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    ctx.clearRect(0, 0, width, height)
+
+    // Calculate FPS (always, even without hand detection)
+    const now = Date.now()
+    frameTimesRef.current.push(now)
+    
+    // Keep only last second of frame times
+    frameTimesRef.current = frameTimesRef.current.filter((time: number) => now - time < 1000)
+    
+    // Update FPS display every 500ms
+    if (now - lastUpdateRef.current > 500) {
+      setFps(frameTimesRef.current.length)
+      lastUpdateRef.current = now
+    }
+
+    ctx.save()
+
+    // Draw FPS monitor at middle-right with fixed dimensions
+    const boxWidth = 240
+    const boxHeight = 90
+    const boxX = width - 320  // More to the left
+    const boxY = height / 2 - 100
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+    ctx.fillRect(boxX, boxY, boxWidth, boxHeight)
+    
+    if (handDetection) {
+      // Draw hand info and FPS when hand is detected
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 16px sans-serif'
+      ctx.fillText(`Hand: ${handDetection.handedness}`, boxX + 10, boxY + 25)
+      ctx.font = '14px sans-serif'
+      ctx.fillText(`Confidence: ${(handDetection.score * 100).toFixed(1)}%`, boxX + 10, boxY + 50)
+      
+      // Draw FPS with color coding
+      const fpsColor = fps >= 30 ? '#10b981' : fps >= 15 ? '#f59e0b' : '#ef4444'
+      ctx.fillStyle = fpsColor
+      ctx.font = 'bold 14px sans-serif'
+      ctx.fillText(`FPS: ${fps}`, boxX + 10, boxY + 75)
+    } else {
+      // Draw FPS only when no hand detected
+      const fpsColor = fps >= 30 ? '#10b981' : fps >= 15 ? '#f59e0b' : '#ef4444'
+      ctx.fillStyle = fpsColor
+      ctx.font = 'bold 18px sans-serif'
+      ctx.fillText(`FPS: ${fps}`, boxX + 10, boxY + 50)
+    }
+
+    ctx.restore()
+
+    if (!handDetection || !videoElement) return
+
+    const { landmarks } = handDetection
+    const canvasWidth = canvas.width
+    const canvasHeight = canvas.height
+
+    ctx.save()
+
+    // Draw all landmarks
+    landmarks.allLandmarks.forEach((landmark, index) => {
+      const x = landmark.x * canvasWidth
+      const y = landmark.y * canvasHeight
+
+      ctx.beginPath()
+      ctx.arc(x, y, 5, 0, 2 * Math.PI)
+      ctx.fillStyle = '#60a5fa'
+      ctx.fill()
+
+      ctx.fillStyle = '#ffffff'
+      ctx.font = '10px monospace'
+      ctx.fillText(index.toString(), x + 8, y + 4)
+    })
+
+    // Highlight key landmarks
+    const drawKeyLandmark = (landmark: { x: number; y: number; z: number }, color: string, label: string) => {
+      const x = landmark.x * canvasWidth
+      const y = landmark.y * canvasHeight
+
+      ctx.beginPath()
+      ctx.arc(x, y, 8, 0, 2 * Math.PI)
+      ctx.fillStyle = color
+      ctx.fill()
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 2
+      ctx.stroke()
+
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 12px sans-serif'
+      ctx.fillText(label, x + 12, y + 4)
+    }
+
+    drawKeyLandmark(landmarks.wrist, '#ef4444', 'Wrist')
+    drawKeyLandmark(landmarks.indexBase, '#10b981', 'Index')
+    drawKeyLandmark(landmarks.pinkyBase, '#f59e0b', 'Pinky')
+
+    // Draw connections
+    const connections = [
+      [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+      [0, 5], [5, 6], [6, 7], [7, 8], // Index
+      [0, 17], [5, 9], [9, 13], [13, 17], // Palm
+      [9, 10], [10, 11], [11, 12], // Middle
+      [13, 14], [14, 15], [15, 16], // Ring
+      [17, 18], [18, 19], [19, 20], // Pinky
+    ]
+
+    ctx.strokeStyle = '#60a5fa'
+    ctx.lineWidth = 2
+
+    connections.forEach(([start, end]) => {
+      const startLandmark = landmarks.allLandmarks[start]
+      const endLandmark = landmarks.allLandmarks[end]
+
+      ctx.beginPath()
+      ctx.moveTo(startLandmark.x * canvasWidth, startLandmark.y * canvasHeight)
+      ctx.lineTo(endLandmark.x * canvasWidth, endLandmark.y * canvasHeight)
+      ctx.stroke()
+    })
+
+    ctx.restore()
+  }, [handDetection, videoElement, width, height, fps])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={width}
+      height={height}
+      className="absolute inset-0 w-full h-full pointer-events-none"
+      style={{ objectFit: 'cover' }}
+    />
+  )
+}
