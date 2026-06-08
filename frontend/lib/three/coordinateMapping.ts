@@ -116,8 +116,38 @@ export interface WristAxes {
   yAxis: THREE.Vector3
   /** Wrist → palm midpoint (forearm / finger direction) */
   zAxis: THREE.Vector3
+  /**
+   * Direct palm normal: normalize(cross(indexBase - wrist, pinkyBase - wrist)).
+   * Parallel to yAxis but computed without Gram-Schmidt, making it a more
+   * direct signal for dorsal-side detection.
+   * Points toward the palm (palmar side); negate for dorsal direction.
+   */
+  palmNormal: THREE.Vector3
   /** Wrist position in world space */
   origin: THREE.Vector3
+}
+
+/**
+ * Compute the palm normal directly from three landmarks.
+ *
+ * normal = normalize(cross(indexBase - wrist, pinkyBase - wrist))
+ *
+ * The result points toward the palmar side of the hand (i.e. toward the camera
+ * when the palm faces the camera).  Negate to get the dorsal direction — the
+ * side where a watch sits.
+ *
+ * This is a direct geometric measurement (no Gram-Schmidt) making it a clean
+ * signal for dorsal-side detection and palm-surface alignment.
+ */
+export function computePalmNormal(
+  wrist: WorldCoordinates,
+  indexBase: WorldCoordinates,
+  pinkyBase: WorldCoordinates,
+): THREE.Vector3 {
+  const wristVec = new THREE.Vector3(wrist.x, wrist.y, wrist.z)
+  const v1 = new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z).sub(wristVec)
+  const v2 = new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z).sub(wristVec)
+  return new THREE.Vector3().crossVectors(v1, v2).normalize()
 }
 
 /**
@@ -195,10 +225,16 @@ export function computeWristAxes(
   X.crossVectors(Y, Z).normalize()
   Z.crossVectors(X, Y).normalize()
 
+  // Direct palm normal: no Gram-Schmidt, pure geometric measurement.
+  const v1 = new THREE.Vector3().subVectors(indexVec, wristVec)
+  const v2 = new THREE.Vector3().subVectors(pinkyVec, wristVec)
+  const palmNormal = new THREE.Vector3().crossVectors(v1, v2).normalize()
+
   return {
     xAxis: X,
     yAxis: Y,
     zAxis: Z,
+    palmNormal,
     origin: wristVec.clone(),
   }
 }

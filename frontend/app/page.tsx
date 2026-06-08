@@ -75,6 +75,7 @@ function ARScene({
             positionOffset={watchConfig.positionOffset}
             rotationOffset={watchConfig.rotationOffset}
             wristFitBias={watchConfig.wristFitBias}
+            palmNormal={mappedData.palmNormal}
             showDebugAxis={false}
           />
         </>

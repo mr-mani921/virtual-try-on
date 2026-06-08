@@ -87,6 +87,7 @@ function CoordinateDebugScene({
           allLandmarks={mappedData.allLandmarksWorld}
           showConnections={true}
           handOrientation={mappedData.handOrientation}
+          palmNormal={mappedData.palmNormal}
           showAxes={showDebugAxis}
         />
       )}
@@ -121,6 +122,7 @@ function CoordinateDebugScene({
             positionOffset={watchConfig.positionOffset}
             rotationOffset={watchConfig.rotationOffset}
             wristFitBias={watchConfig.wristFitBias}
+            palmNormal={mappedData.palmNormal}
             showDebugAxis={showDebugAxis}
           />
         </>

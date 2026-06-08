@@ -29,6 +29,13 @@ interface WatchModelProps {
    * Negative = sits more on the surface (slim models).
    */
   wristFitBias?: number
+  /**
+   * Direct palm normal from computePalmNormal().
+   * When provided, the Y position offset is applied along this vector instead
+   * of the quaternion-derived Y axis — more stable surface anchor.
+   * Points toward the palmar side; negate for dorsal (watch) direction.
+   */
+  palmNormal?: THREE.Vector3 | null
   showDebugAxis?: boolean
   modelPath?: string
 }
@@ -44,6 +51,7 @@ export function WatchModel({
   positionOffset = { x: 0, y: 0, z: 0 },
   rotationOffset = { x: 0, y: 0, z: 0 },
   wristFitBias = 0,
+  palmNormal = null,
   showDebugAxis = false,
   modelPath = '/models/watch.glb',
 }: WatchModelProps) {
@@ -184,15 +192,26 @@ export function WatchModel({
     )
 
     // ── Step 2: compute calibrated target position (local frame → world) ──────
-    // positionOffset (wrist local frame) + wristFitBias (into-wrist depth bias)
-    // are rotated by handOrientation so offsets stay anchored to the wrist
-    // surface regardless of hand angle.
-    computeTargetPosition(
-      wristTransform,
-      { positionOffset, wristFitBias },
-      localOffsetVec.current,
-      targetPosVec.current,
-    )
+    if (palmNormal) {
+      // Palm-normal path: apply X/Z lateral+forearm offsets via quaternion, then
+      // add the depth (Y) component directly along the palm normal.
+      // This anchors the watch to the wrist surface more precisely than going
+      // through the quaternion-derived Y axis alone.
+      const yOffset = positionOffset.y + wristFitBias
+      localOffsetVec.current.set(positionOffset.x, 0, positionOffset.z)
+      if (handOrientation) localOffsetVec.current.applyQuaternion(handOrientation)
+      // Palm normal points toward palm; positive Y sinks watch into wrist surface.
+      localOffsetVec.current.addScaledVector(palmNormal, yOffset)
+      targetPosVec.current.copy(wristTransformVec.current).add(localOffsetVec.current)
+    } else {
+      // Fallback: full quaternion-derived offset (no palmNormal available).
+      computeTargetPosition(
+        wristTransform,
+        { positionOffset, wristFitBias },
+        localOffsetVec.current,
+        targetPosVec.current,
+      )
+    }
 
     const targetPos = {
       x: targetPosVec.current.x,
