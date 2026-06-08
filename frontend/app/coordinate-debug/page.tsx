@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
 import { useHandTracking } from '@/hooks/useHandTracking'
 import { useCoordinateMapping } from '@/hooks/useCoordinateMapping'
-import { useWatchConfig } from '@/hooks/useWatchConfig'
+import { useWatchSelection } from '@/hooks/useWatchSelection'
+import { useWatchLoader } from '@/hooks/useWatchLoader'
+import { WatchSelector } from '@/components/ui/WatchSelector'
 import { useDynamicScale } from '@/hooks/useDynamicScale'
 import { HandDebugVisualizer } from '@/components/canvas/HandDebugVisualizer'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
@@ -25,6 +27,7 @@ function CoordinateDebugScene({
   showWatchModel,
   showDebugAxis,
   watchConfig,
+  modelPath,
   handedness,
   useDynamicScaling,
   dynamicScale
@@ -34,6 +37,7 @@ function CoordinateDebugScene({
   showWatchModel: boolean
   showDebugAxis: boolean
   watchConfig: any
+  modelPath: string
   handedness: 'Left' | 'Right'
   useDynamicScaling: boolean
   dynamicScale: number
@@ -77,7 +81,7 @@ function CoordinateDebugScene({
       <axesHelper args={[3]} />
       
       {/* Model Inspector (runs once to analyze the model) */}
-      <ModelInspector modelPath="/models/watch.glb" />
+      <ModelInspector modelPath={modelPath} />
       
       {showVisualizer && mappedData && (
         <HandDebugVisualizer
@@ -112,6 +116,7 @@ function CoordinateDebugScene({
             smoothing={watchConfig.smoothing}
           />
           <WatchModel
+            key={modelPath}
             wristPosition={mappedData.wristPosition}
             handOrientation={mappedData.handOrientation}
             handedness={handedness}
@@ -123,6 +128,7 @@ function CoordinateDebugScene({
             rotationOffset={watchConfig.rotationOffset}
             wristFitBias={watchConfig.wristFitBias}
             palmNormal={mappedData.palmNormal}
+            modelPath={modelPath}
             showDebugAxis={showDebugAxis}
           />
         </>
@@ -152,8 +158,8 @@ export default function CoordinateDebugPage() {
   const [useDynamicScaling, setUseDynamicScaling] = useState(true)
   const handTrackingStartedRef = useRef(false)
 
-  // Watch configuration hook
-  const watchConfig = useWatchConfig('default')
+  const watchSelection = useWatchSelection('classic')
+  const loaderState = useWatchLoader(watchSelection.selectedWatch.modelUrl)
 
   const { handDetection, isLoading, error, startTracking } = useHandTracking({
     maxNumHands: 1,
@@ -170,7 +176,7 @@ export default function CoordinateDebugPage() {
   const { dynamicScale, handWidth, wristDepth, isStable } = useDynamicScale(
     handDetection,
     {
-      baseScale: watchConfig.config.scale,
+      baseScale: watchSelection.config.scale,
       minScale: 0.8,
       maxScale: 3.0,
       smoothing: 0.2,
@@ -392,7 +398,8 @@ export default function CoordinateDebugPage() {
               showWristAnchor={showWristAnchor}
               showWatchModel={showWatchModel}
               showDebugAxis={showDebugAxis}
-              watchConfig={watchConfig.config}
+              watchConfig={watchSelection.config}
+              modelPath={watchSelection.selectedWatch.modelUrl}
               handedness={handDetection?.handedness || 'Right'}
               useDynamicScaling={useDynamicScaling}
               dynamicScale={dynamicScale}
@@ -556,18 +563,28 @@ export default function CoordinateDebugPage() {
 
           {/* Watch Controls Panel */}
           {showWatchControls && (
-            <div className="absolute top-20 left-4 max-w-xs max-h-[calc(100vh-200px)] overflow-y-auto">
+            <div className="absolute top-20 left-4 max-w-sm max-h-[calc(100vh-200px)] overflow-y-auto space-y-3">
+              <Card>
+                <CardBody className="py-3 px-3">
+                  <WatchSelector
+                    watches={watchSelection.watches}
+                    selectedWatchId={watchSelection.selectedWatchId}
+                    onSelect={watchSelection.selectWatch}
+                    loaderState={loaderState}
+                  />
+                </CardBody>
+              </Card>
               <WatchControls
-                config={watchConfig.config}
-                onScaleChange={watchConfig.updateScale}
-                onPositionChange={watchConfig.updatePositionOffset}
-                onRotationChange={watchConfig.updateRotationOffset}
-                onWristFitBiasChange={watchConfig.updateWristFitBias}
-                onOccluderOffsetChange={watchConfig.updateOccluderOffset}
-                onSmoothingChange={watchConfig.updateSmoothing}
-                onReset={watchConfig.resetToDefault}
-                onLoadPreset={watchConfig.loadPreset}
-                presets={watchConfig.presets}
+                config={watchSelection.config}
+                onScaleChange={watchSelection.updateScale}
+                onPositionChange={watchSelection.updatePositionOffset}
+                onRotationChange={watchSelection.updateRotationOffset}
+                onWristFitBiasChange={watchSelection.updateWristFitBias}
+                onOccluderOffsetChange={watchSelection.updateOccluderOffset}
+                onSmoothingChange={watchSelection.updateSmoothing}
+                onReset={watchSelection.resetToCatalog}
+                onLoadPreset={watchSelection.selectWatch}
+                presets={watchSelection.presets}
               />
             </div>
           )}

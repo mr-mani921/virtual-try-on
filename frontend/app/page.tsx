@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { CameraView } from '@/components/camera/CameraView'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
 import { useHandTracking } from '@/hooks/useHandTracking'
 import { useCoordinateMapping } from '@/hooks/useCoordinateMapping'
-import { useWatchConfig } from '@/hooks/useWatchConfig'
+import { useWatchSelection } from '@/hooks/useWatchSelection'
+import { useWatchLoader, preloadWatchModels } from '@/hooks/useWatchLoader'
 import { useDynamicScale } from '@/hooks/useDynamicScale'
+import { WatchSelector } from '@/components/ui/WatchSelector'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
 import { WatchModel } from '@/components/canvas/WatchModel'
 import { WristOccluder } from '@/components/canvas/WristOccluder'
@@ -19,6 +21,7 @@ function ARScene({
   showWristAnchor, 
   showWatchModel,
   watchConfig,
+  modelPath,
   handedness,
   dynamicScale,
   useDynamicScaling
@@ -26,6 +29,7 @@ function ARScene({
   showWristAnchor: boolean
   showWatchModel: boolean
   watchConfig: any
+  modelPath: string
   handedness: 'Left' | 'Right'
   dynamicScale: number
   useDynamicScaling: boolean
@@ -65,6 +69,7 @@ function ARScene({
             smoothing={watchConfig.smoothing}
           />
           <WatchModel
+            key={modelPath}
             wristPosition={mappedData.wristPosition}
             handOrientation={mappedData.handOrientation}
             handedness={handedness}
@@ -76,6 +81,7 @@ function ARScene({
             rotationOffset={watchConfig.rotationOffset}
             wristFitBias={watchConfig.wristFitBias}
             palmNormal={mappedData.palmNormal}
+            modelPath={modelPath}
             showDebugAxis={false}
           />
         </>
@@ -110,8 +116,12 @@ export default function Home() {
   const [showWatchModel, setShowWatchModel] = useState(true)
   const handTrackingStartedRef = useRef(false)
 
-  // Watch configuration hook
-  const watchConfig = useWatchConfig('default')
+  const watchSelection = useWatchSelection('classic')
+  const loaderState = useWatchLoader(watchSelection.selectedWatch.modelUrl)
+
+  useEffect(() => {
+    preloadWatchModels([watchSelection.selectedWatch.modelUrl])
+  }, [watchSelection.selectedWatch.modelUrl])
 
   const { handDetection, isLoading: trackingLoading, error: trackingError, startTracking } = useHandTracking({
     maxNumHands: 1,
@@ -126,7 +136,7 @@ export default function Home() {
 
   // Dynamic scaling hook (enabled by default in main AR page)
   const { dynamicScale } = useDynamicScale(handDetection, {
-    baseScale: watchConfig.config.scale,
+    baseScale: watchSelection.config.scale,
     minScale: 0.8,
     maxScale: 3.0,
     smoothing: 0.2,
@@ -237,7 +247,8 @@ export default function Home() {
                 <ARScene 
                   showWristAnchor={showWristAnchor} 
                   showWatchModel={showWatchModel}
-                  watchConfig={watchConfig.config}
+                  watchConfig={watchSelection.config}
+                  modelPath={watchSelection.selectedWatch.modelUrl}
                   handedness={handDetection?.handedness || 'Right'}
                   dynamicScale={dynamicScale}
                   useDynamicScaling={true}
@@ -314,8 +325,22 @@ export default function Home() {
                 </Card>
               </div>
 
+              {/* Watch catalog selector */}
+              <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-full max-w-3xl px-4 pointer-events-auto">
+                <Card>
+                  <CardBody className="py-3 px-4">
+                    <WatchSelector
+                      watches={watchSelection.watches}
+                      selectedWatchId={watchSelection.selectedWatchId}
+                      onSelect={watchSelection.selectWatch}
+                      loaderState={loaderState}
+                    />
+                  </CardBody>
+                </Card>
+              </div>
+
               {/* Bottom Controls */}
-              <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2">
+              <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 pointer-events-auto">
                 <Card>
                   <CardBody className="py-3 px-6">
                     <div className="flex items-center gap-4">

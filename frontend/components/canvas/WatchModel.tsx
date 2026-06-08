@@ -2,7 +2,6 @@
 
 import { useRef, useEffect, useState, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import type { WorldCoordinates } from '@/lib/three/coordinateMapping'
 import { lerpWorldCoordinates } from '@/lib/three/coordinateMapping'
@@ -12,6 +11,8 @@ import {
   computeTargetRotation,
   wristTransformFromCoords,
 } from '@/lib/three/watchCalibration'
+import { loadWatchModel } from '@/lib/watches/modelCache'
+import { DEFAULT_MODEL_URL } from '@/lib/watches/catalog'
 
 interface WatchModelProps {
   wristPosition: WorldCoordinates | null
@@ -23,21 +24,36 @@ interface WatchModelProps {
   useDynamicScaling?: boolean
   positionOffset?: { x: number; y: number; z: number }
   rotationOffset?: { x: number; y: number; z: number }
-  /**
-   * Per-watch wrist-fit bias (additive on positionOffset.y).
-   * Positive = sits deeper into wrist (bulky models).
-   * Negative = sits more on the surface (slim models).
-   */
   wristFitBias?: number
-  /**
-   * Direct palm normal from computePalmNormal().
-   * When provided, the Y position offset is applied along this vector instead
-   * of the quaternion-derived Y axis — more stable surface anchor.
-   * Points toward the palmar side; negate for dorsal (watch) direction.
-   */
   palmNormal?: THREE.Vector3 | null
   showDebugAxis?: boolean
+  /** GLB URL from watch catalog (lazy-loaded by id). */
   modelPath?: string
+  onLoad?: () => void
+  onError?: (message: string) => void
+}
+
+function WatchLoadingFallback() {
+  return (
+    <mesh>
+      <boxGeometry args={[0.2, 0.1, 0.3]} />
+      <meshStandardMaterial
+        color="#8b5cf6"
+        wireframe
+        emissive="#8b5cf6"
+        emissiveIntensity={0.5}
+      />
+    </mesh>
+  )
+}
+
+function WatchErrorFallback({ message }: { message: string }) {
+  return (
+    <mesh>
+      <boxGeometry args={[0.18, 0.08, 0.28]} />
+      <meshStandardMaterial color="#ef4444" wireframe emissive="#ef4444" emissiveIntensity={0.4} />
+    </mesh>
+  )
 }
 
 export function WatchModel({
@@ -53,58 +69,69 @@ export function WatchModel({
   wristFitBias = 0,
   palmNormal = null,
   showDebugAxis = false,
-  modelPath = '/models/watch.glb',
+  modelPath = DEFAULT_MODEL_URL,
+  onLoad,
+  onError,
 }: WatchModelProps) {
   const groupRef = useRef<THREE.Group>(null)
   const modelRef = useRef<THREE.Group>(null)
-  const [modelLoaded, setModelLoaded] = useState(false)
 
-  // Per-frame state lives in refs — never in React state — to avoid 60fps re-renders.
+  const [sourceScene, setSourceScene] = useState<THREE.Group | null>(null)
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading')
+  const [loadError, setLoadError] = useState<string | null>(null)
+
   const currentPosRef = useRef<WorldCoordinates | null>(null)
-
-  // ── Calibration helpers (pre-allocated, zero GC in the render loop) ─────────
-  // wristTransformVec mirrors wristPosition as a THREE.Vector3 so it can be
-  // passed to the pure calibration helpers without allocating each frame.
   const wristTransformVec = useRef(new THREE.Vector3())
-
-  // Position pipeline
-  const localOffsetVec = useRef(new THREE.Vector3())   // temp for local→world rotation
-  const targetPosVec   = useRef(new THREE.Vector3())   // result from computeTargetPosition
-
-  // Rotation pipeline
-  const targetQuatRef  = useRef(new THREE.Quaternion()) // result from computeTargetRotation
-  const offsetQuatRef  = useRef(new THREE.Quaternion()) // temp inside computeTargetRotation
-  const tempEulerRef   = useRef(new THREE.Euler())      // temp inside computeTargetRotation
-
-  // Position stabilizer (One Euro filter + velocity-adaptive lerp)
+  const localOffsetVec = useRef(new THREE.Vector3())
+  const targetPosVec = useRef(new THREE.Vector3())
+  const targetQuatRef = useRef(new THREE.Quaternion())
+  const offsetQuatRef = useRef(new THREE.Quaternion())
+  const tempEulerRef = useRef(new THREE.Euler())
   const stabilizer = useRef(new MotionStabilizer())
-
-  // Rotation smoother: pure quaternion slerp with sign correction.
-  // Maintains previousQuaternion across frames; update() returns smoothedQuaternion.
   const quatSmoother = useRef(new QuaternionSmoother())
-
-  // Stores the 1/maxDim normalization factor so useFrame can apply final scale
-  // without triggering a model re-clone.
   const normalizedScaleRef = useRef(1)
 
-  const { scene } = useGLTF(modelPath)
+  // ── Lazy load GLB when modelPath (watch id → catalog url) changes ─────────
+  useEffect(() => {
+    let cancelled = false
 
-  // useMemo only recalculates when the source GLB scene changes.
-  // Scale, rotation offset, and handedness are intentionally excluded —
-  // they are applied every frame via refs in useFrame so that slider
-  // adjustments don't cause a full model re-clone.
+    setLoadState('loading')
+    setLoadError(null)
+    setSourceScene(null)
+    stabilizer.current.reset()
+    quatSmoother.current.reset()
+    currentPosRef.current = null
+
+    loadWatchModel(modelPath)
+      .then((gltf) => {
+        if (cancelled) return
+        setSourceScene(gltf.scene)
+        setLoadState('loaded')
+        onLoad?.()
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        const message = err instanceof Error ? err.message : 'Failed to load watch model'
+        setLoadError(message)
+        setLoadState('error')
+        onError?.(message)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [modelPath])
+
   const processedModel = useMemo(() => {
-    if (!scene) return null
+    if (!sourceScene) return null
 
-    const cloned = scene.clone()
+    const cloned = sourceScene.clone()
 
-    // Center geometry at origin.
     const box = new THREE.Box3().setFromObject(cloned)
     const center = box.getCenter(new THREE.Vector3())
     const size = box.getSize(new THREE.Vector3())
     cloned.position.sub(center)
 
-    // Normalize to unit size; store factor for useFrame.
     const maxDim = Math.max(size.x, size.y, size.z)
     normalizedScaleRef.current = maxDim > 0 ? 1 / maxDim : 1
 
@@ -113,25 +140,30 @@ export function WatchModel({
         child.castShadow = true
         child.receiveShadow = true
         if (child.material) {
-          const mats = Array.isArray(child.material)
-            ? child.material
-            : [child.material]
+          const mats = Array.isArray(child.material) ? child.material : [child.material]
           mats.forEach((mat) => {
             if (mat instanceof THREE.MeshStandardMaterial) {
-              // Detect material type based on properties and name
-              const isGlass = mat.transparent || mat.opacity < 1.0 || 
-                             mat.name.toLowerCase().includes('glass') ||
-                             mat.name.toLowerCase().includes('crystal')
-              
-              const isMetal = mat.metalness > 0.5 || 
-                             mat.name.toLowerCase().includes('metal') ||
-                             mat.name.toLowerCase().includes('steel') ||
-                             mat.name.toLowerCase().includes('gold') ||
-                             mat.name.toLowerCase().includes('chrome')
-              
+              const isGlass =
+                mat.transparent ||
+                mat.opacity < 1.0 ||
+                mat.name.toLowerCase().includes('glass') ||
+                mat.name.toLowerCase().includes('crystal')
+
+              const isMetal =
+                mat.metalness > 0.5 ||
+                mat.name.toLowerCase().includes('metal') ||
+                mat.name.toLowerCase().includes('steel') ||
+                mat.name.toLowerCase().includes('gold') ||
+                mat.name.toLowerCase().includes('chrome')
+
               if (isGlass) {
-                // Glass/Crystal enhancement (cast to any for advanced properties)
-                const physicalMat = mat as any
+                const physicalMat = mat as THREE.MeshStandardMaterial & {
+                  transmission?: number
+                  thickness?: number
+                  ior?: number
+                  clearcoat?: number
+                  clearcoatRoughness?: number
+                }
                 mat.transparent = true
                 mat.opacity = Math.max(mat.opacity, 0.3)
                 physicalMat.transmission = 0.95
@@ -143,19 +175,19 @@ export function WatchModel({
                 physicalMat.clearcoat = 1.0
                 physicalMat.clearcoatRoughness = 0.1
               } else if (isMetal) {
-                // Metallic enhancement
-                const physicalMat = mat as any
+                const physicalMat = mat as THREE.MeshStandardMaterial & {
+                  clearcoat?: number
+                  clearcoatRoughness?: number
+                }
                 mat.metalness = Math.max(mat.metalness, 0.9)
                 mat.roughness = Math.min(mat.roughness, 0.3)
                 mat.envMapIntensity = 2.5
                 physicalMat.clearcoat = 0.5
                 physicalMat.clearcoatRoughness = 0.2
               } else {
-                // Default material enhancement
                 mat.envMapIntensity = 1.5
                 mat.roughness = Math.max(mat.roughness, 0.4)
               }
-              
               mat.needsUpdate = true
             }
           })
@@ -167,7 +199,7 @@ export function WatchModel({
     })
 
     return cloned
-  }, [scene])
+  }, [sourceScene])
 
   useEffect(() => {
     if (processedModel && modelRef.current) {
@@ -175,36 +207,27 @@ export function WatchModel({
         modelRef.current.remove(modelRef.current.children[0])
       }
       modelRef.current.add(processedModel)
-      setModelLoaded(true)
     }
   }, [processedModel])
 
   useFrame(() => {
-    if (!groupRef.current || !wristPosition) return
+    if (!groupRef.current || !wristPosition || loadState !== 'loaded') return
 
     const timestamp = Date.now()
 
-    // ── Step 1: build wrist transform (position + quaternion, no allocation) ───
     const wristTransform = wristTransformFromCoords(
       wristPosition,
       handOrientation,
       wristTransformVec.current,
     )
 
-    // ── Step 2: compute calibrated target position (local frame → world) ──────
     if (palmNormal) {
-      // Palm-normal path: apply X/Z lateral+forearm offsets via quaternion, then
-      // add the depth (Y) component directly along the palm normal.
-      // This anchors the watch to the wrist surface more precisely than going
-      // through the quaternion-derived Y axis alone.
       const yOffset = positionOffset.y + wristFitBias
       localOffsetVec.current.set(positionOffset.x, 0, positionOffset.z)
       if (handOrientation) localOffsetVec.current.applyQuaternion(handOrientation)
-      // Palm normal points toward palm; positive Y sinks watch into wrist surface.
       localOffsetVec.current.addScaledVector(palmNormal, yOffset)
       targetPosVec.current.copy(wristTransformVec.current).add(localOffsetVec.current)
     } else {
-      // Fallback: full quaternion-derived offset (no palmNormal available).
       computeTargetPosition(
         wristTransform,
         { positionOffset, wristFitBias },
@@ -219,7 +242,6 @@ export function WatchModel({
       z: targetPosVec.current.z,
     }
 
-    // ── Step 3: One Euro filter + velocity-adaptive lerp ─────────────────────
     const filteredPos = stabilizer.current.filterPosition(targetPos, timestamp)
 
     if (currentPosRef.current) {
@@ -233,7 +255,6 @@ export function WatchModel({
       currentPosRef.current = { ...filteredPos }
     }
 
-    // ── Step 4: compute calibrated target rotation ────────────────────────────
     if (handOrientation) {
       computeTargetRotation(
         wristTransform,
@@ -243,16 +264,13 @@ export function WatchModel({
         targetQuatRef.current,
       )
 
-      // ── Step 5: quaternion slerp with dot-product sign correction ──────────
       const smoothedQuat = quatSmoother.current.update(targetQuatRef.current, smoothing)
       groupRef.current.quaternion.copy(smoothedQuat)
     }
 
-    // --- Scale (applied to modelRef so normalizedScale from useMemo is preserved) ---
     if (modelRef.current) {
       const finalScale = useDynamicScaling ? dynamicScale : scale
       const s = normalizedScaleRef.current * finalScale
-      // Mirror Z (palm normal) for left-hand wearers
       modelRef.current.scale.set(s, s, handedness === 'Left' ? -s : s)
     }
   })
@@ -267,29 +285,14 @@ export function WatchModel({
         <>
           <mesh position={[0, 0, 0]}>
             <sphereGeometry args={[0.02, 16, 16]} />
-            <meshStandardMaterial
-              color="#ef4444"
-              emissive="#ef4444"
-              emissiveIntensity={0.8}
-            />
+            <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.8} />
           </mesh>
           <axesHelper args={[0.3]} />
         </>
       )}
 
-      {!modelLoaded && (
-        <mesh>
-          <boxGeometry args={[0.2, 0.1, 0.3]} />
-          <meshStandardMaterial
-            color="#8b5cf6"
-            wireframe
-            emissive="#8b5cf6"
-            emissiveIntensity={0.5}
-          />
-        </mesh>
-      )}
+      {loadState === 'loading' && <WatchLoadingFallback />}
+      {loadState === 'error' && <WatchErrorFallback message={loadError ?? 'Error'} />}
     </group>
   )
 }
-
-useGLTF.preload('/models/watch.glb')

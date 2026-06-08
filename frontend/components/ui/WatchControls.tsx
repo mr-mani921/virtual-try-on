@@ -46,7 +46,7 @@ export function WatchControls({
 
           {/* Presets */}
           <div>
-            <label className="text-xs text-zinc-400 mb-2 block">Presets</label>
+            <label className="text-xs text-zinc-400 mb-2 block">Catalog</label>
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(presets).map(([key, preset]) => (
                 <button
