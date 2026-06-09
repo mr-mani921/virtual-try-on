@@ -195,6 +195,14 @@ export default function Home() {
             </div>
             
             <div className="flex items-center gap-3">
+              <Link href="/watches">
+                <Button variant="ghost" size="sm">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                  Browse Catalog
+                </Button>
+              </Link>
               {cameraReady && (
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/20 border border-green-500/30">
                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
