@@ -12,6 +12,7 @@ import {
   computeTargetRotation,
   wristTransformFromCoords,
 } from '@/lib/three/watchCalibration'
+import type { WatchConfiguration } from '@/lib/watches/types'
 
 interface WatchModelProps {
   wristPosition: WorldCoordinates | null
@@ -38,23 +39,35 @@ interface WatchModelProps {
   palmNormal?: THREE.Vector3 | null
   showDebugAxis?: boolean
   modelPath?: string
+  /**
+   * NEW: Watch configuration object from registry
+   * When provided, uses config values as base, allowing prop overrides
+   */
+  watchConfig?: WatchConfiguration
 }
 
 export function WatchModel({
   wristPosition,
   handOrientation,
   handedness = 'Right',
-  smoothing = 0.3,
-  scale = 1,
+  smoothing,
+  scale,
   dynamicScale = 1,
   useDynamicScaling = false,
-  positionOffset = { x: 0, y: 0, z: 0 },
-  rotationOffset = { x: 0, y: 0, z: 0 },
+  positionOffset,
+  rotationOffset,
   wristFitBias = 0,
   palmNormal = null,
   showDebugAxis = false,
-  modelPath = '/models/watch.glb',
+  modelPath,
+  watchConfig,
 }: WatchModelProps) {
+  // Use watchConfig values as base, allow prop overrides for backward compatibility
+  const effectiveScale = scale ?? watchConfig?.scale ?? 1
+  const effectiveSmoothingValue = smoothing ?? watchConfig?.smoothing ?? 0.3
+  const effectivePositionOffset = positionOffset ?? watchConfig?.positionOffset ?? { x: 0, y: 0, z: 0 }
+  const effectiveRotationOffset = rotationOffset ?? watchConfig?.rotationOffset ?? { x: 0, y: 0, z: 0 }
+  const effectiveModelPath = modelPath ?? watchConfig?.modelUrl ?? '/models/watch.glb'
   const groupRef = useRef<THREE.Group>(null)
   const modelRef = useRef<THREE.Group>(null)
   const [modelLoaded, setModelLoaded] = useState(false)
@@ -87,7 +100,7 @@ export function WatchModel({
   // without triggering a model re-clone.
   const normalizedScaleRef = useRef(1)
 
-  const { scene } = useGLTF(modelPath)
+  const { scene } = useGLTF(effectiveModelPath)
 
   // useMemo only recalculates when the source GLB scene changes.
   // Scale, rotation offset, and handedness are intentionally excluded —
@@ -167,7 +180,7 @@ export function WatchModel({
     })
 
     return cloned
-  }, [scene])
+  }, [scene, effectiveModelPath])
 
   useEffect(() => {
     if (processedModel && modelRef.current) {
@@ -197,8 +210,8 @@ export function WatchModel({
       // add the depth (Y) component directly along the palm normal.
       // This anchors the watch to the wrist surface more precisely than going
       // through the quaternion-derived Y axis alone.
-      const yOffset = positionOffset.y + wristFitBias
-      localOffsetVec.current.set(positionOffset.x, 0, positionOffset.z)
+      const yOffset = effectivePositionOffset.y + wristFitBias
+      localOffsetVec.current.set(effectivePositionOffset.x, 0, effectivePositionOffset.z)
       if (handOrientation) localOffsetVec.current.applyQuaternion(handOrientation)
       // Palm normal points toward palm; positive Y sinks watch into wrist surface.
       localOffsetVec.current.addScaledVector(palmNormal, yOffset)
@@ -207,7 +220,7 @@ export function WatchModel({
       // Fallback: full quaternion-derived offset (no palmNormal available).
       computeTargetPosition(
         wristTransform,
-        { positionOffset, wristFitBias },
+        { positionOffset: effectivePositionOffset, wristFitBias },
         localOffsetVec.current,
         targetPosVec.current,
       )
@@ -224,7 +237,7 @@ export function WatchModel({
 
     if (currentPosRef.current) {
       const adaptiveAlpha = stabilizer.current.getAdaptiveAlpha(filteredPos, timestamp)
-      const effectiveSmoothing = Math.max(smoothing, adaptiveAlpha)
+      const effectiveSmoothing = Math.max(effectiveSmoothingValue, adaptiveAlpha)
       const smoothed = lerpWorldCoordinates(currentPosRef.current, filteredPos, effectiveSmoothing)
       groupRef.current.position.set(smoothed.x, smoothed.y, smoothed.z)
       currentPosRef.current = smoothed
@@ -237,20 +250,20 @@ export function WatchModel({
     if (handOrientation) {
       computeTargetRotation(
         wristTransform,
-        { rotationOffset },
+        { rotationOffset: effectiveRotationOffset },
         tempEulerRef.current,
         offsetQuatRef.current,
         targetQuatRef.current,
       )
 
       // ── Step 5: quaternion slerp with dot-product sign correction ──────────
-      const smoothedQuat = quatSmoother.current.update(targetQuatRef.current, smoothing)
+      const smoothedQuat = quatSmoother.current.update(targetQuatRef.current, effectiveSmoothingValue)
       groupRef.current.quaternion.copy(smoothedQuat)
     }
 
     // --- Scale (applied to modelRef so normalizedScale from useMemo is preserved) ---
     if (modelRef.current) {
-      const finalScale = useDynamicScaling ? dynamicScale : scale
+      const finalScale = useDynamicScaling ? dynamicScale : effectiveScale
       const s = normalizedScaleRef.current * finalScale
       // Mirror Z (palm normal) for left-hand wearers
       modelRef.current.scale.set(s, s, handedness === 'Left' ? -s : s)
@@ -292,4 +305,6 @@ export function WatchModel({
   )
 }
 
+// Preload default watch model
 useGLTF.preload('/models/watch.glb')
+

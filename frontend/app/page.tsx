@@ -5,20 +5,24 @@ import { Canvas, useThree } from '@react-three/fiber'
 import { CameraView } from '@/components/camera/CameraView'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
+import { WatchSelector } from '@/components/ui/WatchSelector'
 import { useHandTracking } from '@/hooks/useHandTracking'
 import { useCoordinateMapping } from '@/hooks/useCoordinateMapping'
 import { useWatchConfig } from '@/hooks/useWatchConfig'
 import { useDynamicScale } from '@/hooks/useDynamicScale'
+import { useWatchLoader } from '@/hooks/useWatchLoader'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
 import { WatchModel } from '@/components/canvas/WatchModel'
 import { WristOccluder } from '@/components/canvas/WristOccluder'
 import { Environment } from '@/components/canvas/Environment'
+import { getAllWatches } from '@/lib/watches/registry'
 import Link from 'next/link'
 
 function ARScene({ 
   showWristAnchor, 
   showWatchModel,
   watchConfig,
+  currentWatch,
   handedness,
   dynamicScale,
   useDynamicScaling
@@ -26,6 +30,7 @@ function ARScene({
   showWristAnchor: boolean
   showWatchModel: boolean
   watchConfig: any
+  currentWatch: any
   handedness: 'Left' | 'Right'
   dynamicScale: number
   useDynamicScaling: boolean
@@ -77,6 +82,7 @@ function ARScene({
             wristFitBias={watchConfig.wristFitBias}
             palmNormal={mappedData.palmNormal}
             showDebugAxis={false}
+            watchConfig={currentWatch}
           />
         </>
       )}
@@ -108,10 +114,19 @@ export default function Home() {
   const [showLandmarks, setShowLandmarks] = useState(true)
   const [showWristAnchor, setShowWristAnchor] = useState(false)
   const [showWatchModel, setShowWatchModel] = useState(true)
+  const [showWatchSelector, setShowWatchSelector] = useState(false)
   const handTrackingStartedRef = useRef(false)
 
-  // Watch configuration hook
+  // Watch configuration hook (for manual adjustments)
   const watchConfig = useWatchConfig('default')
+
+  // Watch loader hook (for dynamic watch loading)
+  const { currentWatch, isLoading: watchLoading, loadWatch } = useWatchLoader('default-watch', {
+    preload: true,
+  })
+
+  // Get all available watches
+  const allWatches = getAllWatches()
 
   const { handDetection, isLoading: trackingLoading, error: trackingError, startTracking } = useHandTracking({
     maxNumHands: 1,
@@ -238,6 +253,7 @@ export default function Home() {
                   showWristAnchor={showWristAnchor} 
                   showWatchModel={showWatchModel}
                   watchConfig={watchConfig.config}
+                  currentWatch={currentWatch}
                   handedness={handDetection?.handedness || 'Right'}
                   dynamicScale={dynamicScale}
                   useDynamicScaling={true}
@@ -314,11 +330,39 @@ export default function Home() {
                 </Card>
               </div>
 
+              {/* Watch Selector Panel */}
+              {showWatchSelector && (
+                <div className="absolute top-6 right-6 max-w-md">
+                  <WatchSelector
+                    watches={allWatches}
+                    currentWatchId={currentWatch?.id || null}
+                    onSelectWatch={(watchId) => {
+                      loadWatch(watchId)
+                      setShowWatchSelector(false)
+                    }}
+                    isLoading={watchLoading}
+                  />
+                </div>
+              )}
+
               {/* Bottom Controls */}
               <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2">
                 <Card>
                   <CardBody className="py-3 px-6">
                     <div className="flex items-center gap-4">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setShowWatchSelector(!showWatchSelector)}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                        {showWatchSelector ? 'Hide' : 'Select'} Watch
+                      </Button>
+
+                      <div className="w-px h-6 bg-white/10"></div>
+
                       <Button 
                         variant="ghost" 
                         size="sm" 

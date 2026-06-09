@@ -203,7 +203,7 @@ export function HandDebugVisualizer({
 }
 
 function Line({ points, color }: { points: [number, number, number][]; color: string }) {
-  const ref = useRef<THREE.Line>(null)
+  const ref = useRef<THREE.Line | null>(null)
 
   useFrame(() => {
     if (ref.current) {
@@ -215,7 +215,7 @@ function Line({ points, color }: { points: [number, number, number][]; color: st
   })
 
   return (
-    <line ref={ref}>
+    <line ref={ref as any}>
       <bufferGeometry />
       <lineBasicMaterial color={color} linewidth={2} />
     </line>
@@ -233,7 +233,7 @@ function AxisLine({
   pointsRef: React.MutableRefObject<[number, number, number][]>
   color: string
 }) {
-  const ref = useRef<THREE.Line>(null)
+  const ref = useRef<THREE.Line | null>(null)
 
   useFrame(() => {
     if (ref.current) {
@@ -245,7 +245,7 @@ function AxisLine({
   })
 
   return (
-    <line ref={ref}>
+    <line ref={ref as any}>
       <bufferGeometry />
       <lineBasicMaterial color={color} linewidth={3} />
     </line>
