@@ -7,6 +7,7 @@ import { CameraView } from '@/components/camera/CameraView'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
 import { useHandTracking } from '@/hooks/useHandTracking'
+import type { HandDetection } from '@/lib/mediapipe/types'
 import { useCoordinateMapping } from '@/hooks/useCoordinateMapping'
 import { useWatchConfig } from '@/hooks/useWatchConfig'
 import { useDynamicScale } from '@/hooks/useDynamicScale'
@@ -18,18 +19,19 @@ import Link from 'next/link'
 
 // AR Scene Component - Uses only default config, not watch-specific values
 function ARScene({
+  handDetection,
   currentWatch,
   watchConfig,
   handedness,
   dynamicScale,
 }: {
+  handDetection: HandDetection | null
   currentWatch: any
   watchConfig: any
   handedness: 'Left' | 'Right'
   dynamicScale: number
 }) {
   const { camera } = useThree()
-  const [handDetection, setHandDetection] = useState<any>(null)
 
   const mappedData = useCoordinateMapping(handDetection, camera, {
     videoWidth: 1280,
@@ -37,13 +39,11 @@ function ARScene({
     flipHorizontal: false,
   })
 
-  if (typeof window !== 'undefined') {
-    ;(window as any).__setHandDetectionTryOn = setHandDetection
-  }
+  const isHandTracked = handDetection !== null && mappedData !== null
 
   return (
     <>
-      {mappedData && (
+      {isHandTracked && (
         <>
           <WristOccluder
             wristPosition={mappedData.wristPosition}
@@ -122,12 +122,6 @@ export default function TryOnPage() {
     maxNumHands: 1,
     minDetectionConfidence: 0.7,
     minTrackingConfidence: 0.5,
-    onHandDetected: (hand) => {
-      if (typeof window !== 'undefined' && (window as any).__setHandDetectionTryOn) {
-        ;(window as any).__setHandDetectionTryOn(hand)
-      }
-      setTrackingState('detected')
-    },
   })
 
   // Dynamic scaling - Use only default config, not watch-specific values
@@ -276,6 +270,7 @@ export default function TryOnPage() {
               }}
             >
               <ARScene
+                handDetection={handDetection}
                 currentWatch={currentWatch}
                 watchConfig={watchConfig.config}
                 handedness={handDetection?.handedness || 'Right'}

@@ -9,7 +9,7 @@ interface UseHandTrackingOptions {
   maxNumHands?: number
   minDetectionConfidence?: number
   minTrackingConfidence?: number
-  onHandDetected?: (hand: HandDetection) => void
+  onHandDetected?: (hand: HandDetection | null) => void
 }
 
 interface UseHandTrackingReturn {
@@ -38,6 +38,11 @@ export function useHandTracking(
   const handsRef = useRef<any>(null)
   const cameraRef = useRef<any>(null)
   const animationFrameRef = useRef<number | null>(null)
+  const onHandDetectedRef = useRef(onHandDetected)
+
+  useEffect(() => {
+    onHandDetectedRef.current = onHandDetected
+  }, [onHandDetected])
 
   const stopTracking = useCallback(() => {
     console.log('Stopping hand tracking...')
@@ -113,9 +118,10 @@ export function useHandTracking(
             }
 
             setHandDetection(detection)
-            onHandDetected?.(detection)
+            onHandDetectedRef.current?.(detection)
           } else {
             setHandDetection(null)
+            onHandDetectedRef.current?.(null)
           }
         })
 
@@ -145,7 +151,7 @@ export function useHandTracking(
         setIsInitialized(false)
       }
     },
-    [maxNumHands, minDetectionConfidence, minTrackingConfidence, onHandDetected, isInitialized]
+    [maxNumHands, minDetectionConfidence, minTrackingConfidence, isInitialized]
   )
 
   useEffect(() => {
