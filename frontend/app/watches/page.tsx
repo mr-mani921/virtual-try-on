@@ -144,47 +144,15 @@ export default function WatchesPage() {
                         {/* Gradient Background based on category */}
                         <div className={`absolute inset-0 bg-gradient-to-br ${getCategoryGradient(watch.category || 'casual')}`} />
                         
-                        {/* Sample watch image placeholder with better styling */}
+                        {/* Display actual watch image */}
                         <div className="absolute inset-0 flex items-center justify-center p-8">
-                          <div className="relative w-full h-full">
-                            {/* Watch placeholder image using a circular design */}
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="relative w-32 h-32 sm:w-40 sm:h-40">
-                                {/* Watch bezel */}
-                                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-zinc-700 via-zinc-600 to-zinc-800 shadow-2xl">
-                                  {/* Watch face */}
-                                  <div className="absolute inset-2 rounded-full bg-gradient-to-br from-zinc-900 to-black border-2 border-zinc-700 flex items-center justify-center">
-                                    {/* Category icon */}
-                                    <span className="text-4xl sm:text-5xl opacity-50">
-                                      {watch.category === 'sports' && '⚡'}
-                                      {watch.category === 'luxury' && '💎'}
-                                      {watch.category === 'casual' && '👔'}
-                                      {watch.category === 'smart' && '📱'}
-                                    </span>
-                                  </div>
-                                  
-                                  {/* Watch markers */}
-                                  <div className="absolute inset-0">
-                                    {[...Array(12)].map((_, i) => (
-                                      <div
-                                        key={i}
-                                        className="absolute w-1 h-2 bg-zinc-500 left-1/2 top-2"
-                                        style={{
-                                          transform: `translateX(-50%) rotate(${i * 30}deg)`,
-                                          transformOrigin: '50% 4rem',
-                                        }}
-                                      />
-                                    ))}
-                                  </div>
-                                </div>
-                                
-                                {/* Watch strap */}
-                                <div className="absolute -left-4 top-1/2 w-6 h-24 -translate-y-1/2 bg-gradient-to-r from-zinc-800 to-zinc-700 rounded-l-lg shadow-xl" />
-                                <div className="absolute -right-4 top-1/2 w-6 h-24 -translate-y-1/2 bg-gradient-to-l from-zinc-800 to-zinc-700 rounded-r-lg shadow-xl" />
-                              </div>
-                            </div>
-                          </div>
+                          <img
+                            src={watch.thumbnail || '/images/watch-placeholder.png'}
+                            alt={watch.name}
+                            className="object-contain w-full h-full rounded-full shadow-2xl border-4 border-zinc-700 bg-zinc-950"
+                          />
                         </div>
+                  
 
                         {/* Category Badge */}
                         <div className="absolute top-3 left-3">
