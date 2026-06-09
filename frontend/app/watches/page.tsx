@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { getAllWatches, getWatchesByCategory } from '@/lib/watches/registry'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -18,42 +17,42 @@ export default function WatchesPage() {
       : allWatches
 
   const categories = [
-    { id: 'all', name: 'All Watches', icon: '🕐', count: allWatches.length },
-    { id: 'sports', name: 'Sports', icon: '⚡', count: getWatchesByCategory('sports').length },
-    { id: 'luxury', name: 'Luxury', icon: '💎', count: getWatchesByCategory('luxury').length },
-    { id: 'casual', name: 'Casual', icon: '👔', count: getWatchesByCategory('casual').length },
-    { id: 'smart', name: 'Smart', icon: '📱', count: getWatchesByCategory('smart').length },
+    { id: 'all', name: 'All Watches', count: allWatches.length },
+    { id: 'sports', name: 'Sports', count: getWatchesByCategory('sports').length },
+    { id: 'luxury', name: 'Luxury', count: getWatchesByCategory('luxury').length },
+    { id: 'casual', name: 'Casual', count: getWatchesByCategory('casual').length },
+    { id: 'smart', name: 'Smart', count: getWatchesByCategory('smart').length },
   ]
 
   // Generate a unique gradient for each watch based on category
   const getCategoryGradient = (category: string) => {
     const gradients = {
-      sports: 'from-orange-500/20 via-red-500/20 to-pink-500/20',
-      luxury: 'from-yellow-500/20 via-amber-500/20 to-yellow-600/20',
-      casual: 'from-blue-500/20 via-cyan-500/20 to-teal-500/20',
-      smart: 'from-purple-500/20 via-violet-500/20 to-indigo-500/20',
+      sports: 'from-red-500/20 via-slate-800/20 to-slate-900/20',
+      luxury: 'from-amber-500/20 via-slate-800/20 to-slate-900/20',
+      casual: 'from-blue-500/20 via-slate-800/20 to-slate-900/20',
+      smart: 'from-cyan-500/20 via-slate-800/20 to-slate-900/20',
     }
-    return gradients[category as keyof typeof gradients] || 'from-zinc-800 to-zinc-900'
+    return gradients[category as keyof typeof gradients] || 'from-slate-800 to-slate-900'
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       {/* Background Pattern */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sky-900/20 via-transparent to-transparent" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent" />
 
       {/* Header */}
-      <header className="relative z-10 px-4 sm:px-6 py-4 sm:py-6 backdrop-blur-xl bg-zinc-900/50 border-b border-white/10">
+      <header className="relative z-10 px-4 sm:px-6 py-4 sm:py-6 backdrop-blur-xl bg-slate-900/50 border-b border-slate-700/50">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-4 sm:mb-6">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-sky-500 to-purple-600 flex items-center justify-center">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
                 <svg className="w-5 h-5 sm:w-7 sm:h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-white">Virtual Try-On</h1>
-                <p className="text-xs sm:text-sm text-zinc-400">Choose your perfect watch</p>
+                <h1 className="text-xl sm:text-2xl font-bold text-white">TimeVision</h1>
+                <p className="text-xs sm:text-sm text-slate-400">Choose your perfect watch</p>
               </div>
             </div>
 
@@ -78,12 +77,11 @@ export default function WatchesPage() {
                   transition-all whitespace-nowrap
                   ${
                     (selectedCategory === category.id || (selectedCategory === null && category.id === 'all'))
-                      ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/50'
-                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'
+                      ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/50'
+                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
                   }
                 `}
               >
-                <span className="text-base sm:text-lg">{category.icon}</span>
                 <span>{category.name}</span>
                 <span className="text-xs opacity-75">({category.count})</span>
               </button>
@@ -98,8 +96,8 @@ export default function WatchesPage() {
         {isLoading && (
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
-              <div className="w-16 h-16 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-zinc-400">Loading watches...</p>
+              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-slate-400">Loading watches...</p>
             </div>
           </div>
         )}
@@ -109,13 +107,13 @@ export default function WatchesPage() {
           <div className="flex items-center justify-center py-20">
             <Card className="max-w-md">
               <CardBody className="text-center py-12">
-                <div className="w-20 h-20 rounded-full bg-zinc-800 flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-10 h-10 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-20 h-20 rounded-full bg-slate-800 flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-10 h-10 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">No Watches Found</h3>
-                <p className="text-zinc-400 mb-6">Try selecting a different category</p>
+                <p className="text-slate-400 mb-6">Try selecting a different category</p>
                 <Button onClick={() => setSelectedCategory(null)}>
                   View All Watches
                 </Button>
@@ -131,13 +129,13 @@ export default function WatchesPage() {
               <h2 className="text-lg font-semibold text-white">
                 {selectedCategory ? `${selectedCategory.charAt(0).toUpperCase() + selectedCategory.slice(1)} Watches` : 'All Watches'}
               </h2>
-              <p className="text-sm text-zinc-400">{filteredWatches.length} watches available</p>
+              <p className="text-sm text-slate-400">{filteredWatches.length} watches available</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
               {filteredWatches.map((watch) => (
                 <Link key={watch.id} href={`/try-on/${watch.id}`}>
-                  <Card className="group hover:scale-[1.02] hover:shadow-2xl hover:shadow-sky-500/20 transition-all duration-300 cursor-pointer h-full">
+                  <Card className="group hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/20 transition-all duration-300 cursor-pointer h-full">
                     <CardBody className="p-0 h-full flex flex-col">
                       {/* Watch Image */}
                       <div className="relative aspect-square bg-gradient-to-br overflow-hidden">
@@ -149,7 +147,7 @@ export default function WatchesPage() {
                           <img
                             src={watch.thumbnail || '/images/watch-placeholder.png'}
                             alt={watch.name}
-                            className="object-contain w-full h-full rounded-full shadow-2xl border-4 border-zinc-700 bg-zinc-950"
+                            className="object-contain w-full h-full rounded-full shadow-2xl border-4 border-slate-700 bg-slate-950"
                           />
                         </div>
                   
@@ -184,13 +182,13 @@ export default function WatchesPage() {
                       {/* Watch Info */}
                       <div className="p-4 flex-1 flex flex-col">
                         <div className="flex-1">
-                          <h3 className="text-base sm:text-lg font-bold text-white mb-1 line-clamp-1 group-hover:text-sky-400 transition-colors">
+                          <h3 className="text-base sm:text-lg font-bold text-white mb-1 line-clamp-1 group-hover:text-blue-400 transition-colors">
                             {watch.name}
                           </h3>
-                          <p className="text-sm text-zinc-400 mb-2">{watch.brand}</p>
+                          <p className="text-sm text-slate-400 mb-2">{watch.brand}</p>
                           
                           {watch.description && (
-                            <p className="text-xs text-zinc-500 mb-3 line-clamp-2">
+                            <p className="text-xs text-slate-500 mb-3 line-clamp-2">
                               {watch.description}
                             </p>
                           )}
@@ -198,10 +196,10 @@ export default function WatchesPage() {
 
                         <div className="flex items-center justify-between mt-auto pt-3 border-t border-white/5">
                           {watch.price && (
-                            <p className="text-lg font-bold text-sky-400">{watch.price}</p>
+                            <p className="text-lg font-bold text-blue-400">{watch.price}</p>
                           )}
                           
-                          <div className="flex items-center gap-1 text-sky-400 text-sm font-medium group-hover:gap-2 transition-all">
+                          <div className="flex items-center gap-1 text-blue-400 text-sm font-medium group-hover:gap-2 transition-all">
                             <span>Try On</span>
                             <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -219,10 +217,10 @@ export default function WatchesPage() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 mt-12 sm:mt-20 py-6 border-t border-white/10">
+      <footer className="relative z-10 mt-12 sm:mt-20 py-6 border-t border-slate-700/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
-          <p className="text-xs sm:text-sm text-zinc-500">
-            © 2024 Virtual Watch Try-On. All rights reserved.
+          <p className="text-xs sm:text-sm text-slate-500">
+            © 2024 TimeVision. All rights reserved.
           </p>
         </div>
       </footer>

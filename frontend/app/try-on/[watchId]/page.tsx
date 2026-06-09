@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { Canvas, useThree } from '@react-three/fiber'
 import { CameraView } from '@/components/camera/CameraView'
 import { Button } from '@/components/ui/Button'
@@ -94,7 +94,6 @@ function ARScene({
 
 export default function TryOnPage() {
   const params = useParams()
-  const router = useRouter()
   const watchId = params.watchId as string
 
   const [currentWatch, setCurrentWatch] = useState<any>(null)
@@ -154,7 +153,7 @@ export default function TryOnPage() {
     }
   }, [trackingError, trackingLoading, cameraReady, handDetection])
 
-  const handleStreamReady = useCallback((stream: MediaStream) => {
+  const handleStreamReady = useCallback(() => {
     setCameraReady(true)
     setTrackingState('searching')
   }, [])
@@ -179,7 +178,7 @@ export default function TryOnPage() {
   // Watch not found error
   if (watchNotFound) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center p-6">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-6">
         <Card className="max-w-md">
           <CardBody className="text-center py-12">
             <div className="w-20 h-20 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
@@ -188,7 +187,7 @@ export default function TryOnPage() {
               </svg>
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Watch Not Found</h2>
-            <p className="text-zinc-400 mb-6">
+            <p className="text-slate-400 mb-6">
               The watch you're looking for doesn't exist or has been removed.
             </p>
             <Link href="/watches">
@@ -203,9 +202,9 @@ export default function TryOnPage() {
   // Loading watch
   if (!currentWatch) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-white font-medium">Loading watch...</p>
         </div>
       </div>
@@ -213,12 +212,12 @@ export default function TryOnPage() {
   }
 
   return (
-    <div className="relative w-full h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 overflow-hidden">
+    <div className="relative w-full h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden">
       {/* Background Pattern */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sky-900/20 via-transparent to-transparent" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-transparent to-transparent" />
 
       {/* Header */}
-      <header className="absolute top-0 left-0 right-0 z-30 px-6 py-4 backdrop-blur-xl bg-zinc-900/50 border-b border-white/10">
+      <header className="absolute top-0 left-0 right-0 z-30 px-6 py-4 backdrop-blur-xl bg-slate-900/50 border-b border-slate-700/50">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/watches">
             <Button variant="ghost" size="sm">
@@ -231,9 +230,9 @@ export default function TryOnPage() {
 
           <div className="flex items-center gap-3">
             {cameraReady && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/20 border border-green-500/30">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-xs text-green-400 font-medium">Camera Active</span>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/30">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs text-emerald-400 font-medium">Camera Active</span>
               </div>
             )}
           </div>
@@ -294,14 +293,14 @@ export default function TryOnPage() {
                 <div className="flex items-center gap-2">
                   {trackingState === 'loading' && (
                     <>
-                      <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
-                      <span className="text-xs text-zinc-300 font-medium">Loading watch...</span>
+                      <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      <span className="text-xs text-slate-300 font-medium">Loading watch...</span>
                     </>
                   )}
                   {trackingState === 'initializing' && (
                     <>
-                      <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
-                      <span className="text-xs text-zinc-300 font-medium">Initializing camera...</span>
+                      <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      <span className="text-xs text-slate-300 font-medium">Initializing camera...</span>
                     </>
                   )}
                   {trackingState === 'searching' && (
@@ -312,8 +311,8 @@ export default function TryOnPage() {
                   )}
                   {trackingState === 'detected' && (
                     <>
-                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                      <span className="text-xs text-green-300 font-medium">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-xs text-emerald-300 font-medium">
                         Hand detected ({handDetection?.handedness})
                       </span>
                     </>
@@ -336,21 +335,18 @@ export default function TryOnPage() {
             <Card>
               <CardBody className="py-4">
                 <div className="flex items-start gap-4">
-                  <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-zinc-800 to-zinc-900 flex items-center justify-center flex-shrink-0">
-                    <span className="text-3xl">
-                      {currentWatch.category === 'sports' && '⚡'}
-                      {currentWatch.category === 'luxury' && '💎'}
-                      {currentWatch.category === 'casual' && '👔'}
-                      {currentWatch.category === 'smart' && '📱'}
-                    </span>
+                  <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
                   </div>
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-white mb-1">
                       {currentWatch.name}
                     </h3>
-                    <p className="text-sm text-zinc-400 mb-2">{currentWatch.brand}</p>
+                    <p className="text-sm text-slate-400 mb-2">{currentWatch.brand}</p>
                     {currentWatch.price && (
-                      <p className="text-lg font-bold text-sky-400">{currentWatch.price}</p>
+                      <p className="text-lg font-bold text-blue-400">{currentWatch.price}</p>
                     )}
                   </div>
                 </div>
@@ -364,7 +360,7 @@ export default function TryOnPage() {
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             <div className="text-center max-w-md px-6">
               <div className="mb-6">
-                <svg className="w-24 h-24 mx-auto text-sky-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-24 h-24 mx-auto text-blue-500 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" />
                 </svg>
               </div>
@@ -373,17 +369,17 @@ export default function TryOnPage() {
                   <h3 className="text-xl font-bold text-white mb-3">
                     Position Your Hand
                   </h3>
-                  <ul className="text-sm text-zinc-300 space-y-2 text-left">
+                  <ul className="text-sm text-slate-300 space-y-2 text-left">
                     <li className="flex items-start gap-2">
-                      <span className="text-sky-400">→</span>
+                      <span className="text-blue-400">→</span>
                       <span>Hold your hand in front of the camera</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-sky-400">→</span>
+                      <span className="text-blue-400">→</span>
                       <span>Make sure your wrist is visible</span>
                     </li>
                     <li className="flex items-start gap-2">
-                      <span className="text-sky-400">→</span>
+                      <span className="text-blue-400">→</span>
                       <span>Keep your hand steady for best results</span>
                     </li>
                   </ul>
@@ -398,14 +394,14 @@ export default function TryOnPage() {
           <div className="absolute inset-0 flex items-center justify-center">
             <Card className="max-w-md">
               <CardBody className="text-center py-8">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-sky-500 to-purple-600 flex items-center justify-center mx-auto mb-4">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mx-auto mb-4">
                   <svg className="w-8 h-8 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </div>
                 <h2 className="text-xl font-bold text-white mb-2">Initializing Camera</h2>
-                <p className="text-sm text-zinc-400">Please grant camera permission to continue</p>
+                <p className="text-sm text-slate-400">Please grant camera permission to continue</p>
               </CardBody>
             </Card>
           </div>
