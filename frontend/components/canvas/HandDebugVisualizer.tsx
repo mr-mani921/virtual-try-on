@@ -22,6 +22,13 @@ interface HandDebugVisualizerProps {
    * Z = blue  (wrist → fingers)
    */
   handOrientation?: THREE.Quaternion | null
+  /**
+   * Direct palm normal from computePalmNormal().
+   * When showAxes=true, draws two extra lines from the wrist:
+   *   cyan    = palm normal direction (toward palm / palmar side)
+   *   magenta = dorsal direction (-palmNormal, where the watch sits)
+   */
+  palmNormal?: THREE.Vector3 | null
   showAxes?: boolean
 }
 
@@ -29,6 +36,9 @@ interface HandDebugVisualizerProps {
 const _xDir = new THREE.Vector3()
 const _yDir = new THREE.Vector3()
 const _zDir = new THREE.Vector3()
+const _palmNormalDir = new THREE.Vector3()
+
+const NORMAL_LENGTH = 0.55  // slightly longer so it stands out from coordinate axes
 
 export function HandDebugVisualizer({
   wristPosition,
@@ -37,6 +47,7 @@ export function HandDebugVisualizer({
   allLandmarks = [],
   showConnections = true,
   handOrientation,
+  palmNormal = null,
   showAxes = false,
 }: HandDebugVisualizerProps) {
   const wristRef = useRef<THREE.Mesh>(null)
@@ -48,6 +59,12 @@ export function HandDebugVisualizer({
   const xAxisRef = useRef<[number, number, number][]>([[0,0,0],[1,0,0]])
   const yAxisRef = useRef<[number, number, number][]>([[0,0,0],[0,1,0]])
   const zAxisRef = useRef<[number, number, number][]>([[0,0,0],[0,0,1]])
+
+  // Palm normal endpoint refs (updated every frame when palmNormal is provided).
+  // palmNormalRef = cyan line (toward palm / palmar direction)
+  // dorsalRef     = magenta line (-palmNormal = dorsal / watch side)
+  const palmNormalRef = useRef<[number, number, number][]>([[0,0,0],[0,1,0]])
+  const dorsalRef     = useRef<[number, number, number][]>([[0,0,0],[0,-1,0]])
 
   // Trigger axes re-render by bumping a version counter stored in a ref.
   const axesVersionRef = useRef(0)
@@ -76,6 +93,22 @@ export function HandDebugVisualizer({
       xAxisRef.current = [[ox, oy, oz], [ox + _xDir.x, oy + _xDir.y, oz + _xDir.z]]
       yAxisRef.current = [[ox, oy, oz], [ox + _yDir.x, oy + _yDir.y, oz + _yDir.z]]
       zAxisRef.current = [[ox, oy, oz], [ox + _zDir.x, oy + _zDir.y, oz + _zDir.z]]
+
+      // Palm normal lines (only when palmNormal is provided).
+      if (palmNormal) {
+        _palmNormalDir.copy(palmNormal).multiplyScalar(NORMAL_LENGTH)
+        // Cyan: toward palm (palmar normal direction)
+        palmNormalRef.current = [
+          [ox, oy, oz],
+          [ox + _palmNormalDir.x, oy + _palmNormalDir.y, oz + _palmNormalDir.z],
+        ]
+        // Magenta: toward dorsal (watch side = -palmNormal)
+        dorsalRef.current = [
+          [ox, oy, oz],
+          [ox - _palmNormalDir.x, oy - _palmNormalDir.y, oz - _palmNormalDir.z],
+        ]
+      }
+
       axesVersionRef.current++
     }
   })
@@ -146,15 +179,23 @@ export function HandDebugVisualizer({
       )}
 
       {/* Wrist coordinate frame axes (optional)
-          X = red   (+X: index → pinky)
-          Y = green (+Y: into palm, right-handed cross product)
-          Z = blue  (+Z: wrist → fingers / forearm direction)
+          X = red     (+X: index → pinky)
+          Y = green   (+Y: into palm, right-handed cross product)
+          Z = blue    (+Z: wrist → fingers / forearm direction)
+          cyan        = palm normal (toward palm / palmar side)
+          magenta     = dorsal direction (-palmNormal, where watch sits)
       */}
       {showAxes && handOrientation && (
         <>
           <AxisLine pointsRef={xAxisRef} color="#ef4444" />
           <AxisLine pointsRef={yAxisRef} color="#10b981" />
           <AxisLine pointsRef={zAxisRef} color="#3b82f6" />
+          {palmNormal && (
+            <>
+              <AxisLine pointsRef={palmNormalRef} color="#06b6d4" />
+              <AxisLine pointsRef={dorsalRef} color="#d946ef" />
+            </>
+          )}
         </>
       )}
     </group>
@@ -162,7 +203,7 @@ export function HandDebugVisualizer({
 }
 
 function Line({ points, color }: { points: [number, number, number][]; color: string }) {
-  const ref = useRef<THREE.Line>(null)
+  const ref = useRef<THREE.Line | null>(null)
 
   useFrame(() => {
     if (ref.current) {
@@ -174,7 +215,7 @@ function Line({ points, color }: { points: [number, number, number][]; color: st
   })
 
   return (
-    <line ref={ref}>
+    <line ref={ref as any}>
       <bufferGeometry />
       <lineBasicMaterial color={color} linewidth={2} />
     </line>
@@ -192,7 +233,7 @@ function AxisLine({
   pointsRef: React.MutableRefObject<[number, number, number][]>
   color: string
 }) {
-  const ref = useRef<THREE.Line>(null)
+  const ref = useRef<THREE.Line | null>(null)
 
   useFrame(() => {
     if (ref.current) {
@@ -204,7 +245,7 @@ function AxisLine({
   })
 
   return (
-    <line ref={ref}>
+    <line ref={ref as any}>
       <bufferGeometry />
       <lineBasicMaterial color={color} linewidth={3} />
     </line>

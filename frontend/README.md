@@ -1,12 +1,12 @@
-# AR Virtual Watch Try-On System
+# TimeVision - AR Virtual Watch Try-On
 
-A browser-based augmented reality application that enables users to virtually try on watches using real-time hand tracking and 3D rendering.
+A browser-based augmented reality application that lets users virtually try on watches using real-time hand tracking and 3D rendering. Fully installable as a **Progressive Web App** — works on desktop and mobile like a native app.
 
 ## Overview
 
-This project leverages computer vision and WebGL to create an immersive watch try-on experience directly in the browser. Users can see how different watches look on their wrist in real-time using their device's camera.
+This project uses computer vision and WebGL to create an immersive watch try-on experience directly in the browser. Users can see how different watches look on their wrist in real-time using their device's camera.
 
-Built with **Next.js**, **React Three Fiber**, **Three.js**, and **MediaPipe Hands**.
+Built with **Next.js**, **React Three Fiber**, **Three.js**, **MediaPipe Hands**, and **next-pwa**.
 
 ## Features
 
@@ -18,6 +18,7 @@ Built with **Next.js**, **React Three Fiber**, **Three.js**, and **MediaPipe Han
 - **Wrist Occlusion** - Depth-buffer masking creates realistic strap wrap-around effect
 - **Motion Smoothing** - One Euro Filter and quaternion slerp for stable, jitter-free tracking
 - **Responsive Design** - Works on desktop and mobile (iOS Safari, Android Chrome)
+- **Progressive Web App** - Installable, offline-capable, app-like experience
 
 ### Watch Positioning System
 
@@ -56,19 +57,22 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Main AR Experience
 
-Navigate to the root page (`/`) to access the full AR try-on experience:
+Navigate to `/watches` to browse the catalog, then tap any watch to enter the AR try-on at `/try-on/[watchId]`:
 
-1. Grant camera permissions when prompted
-2. Position your hand in view with palm facing the camera
-3. The watch will automatically attach to your wrist
-4. Rotate your hand to view from different angles
-5. Use the controls panel to adjust watch style and fit
+1. Select a watch from the catalog
+2. Grant camera permissions when prompted
+3. Position your hand in view with palm facing the camera
+4. The watch will automatically attach to your wrist
+5. Rotate your hand to view from different angles
+
+The root page (`/`) is the landing page. The original AR test is at `/demo`.
 
 ### Debug Pages
 
 - `/coordinate-debug` - Split-view visualization of tracking and 3D mapping
 - `/3d-demo` - React Three Fiber interactive demo
 - `/camera-test` - Camera integration testing
+- `/demo` - Full AR experience (original test page)
 
 ### Watch Configuration
 
@@ -94,6 +98,7 @@ loadPreset('sports')
 | Hand Tracking | MediaPipe Hands |
 | Language | TypeScript |
 | Styling | Tailwind CSS |
+| PWA | next-pwa + Workbox |
 
 ### Project Structure
 
@@ -155,6 +160,187 @@ React Component Tree
   → Canvas (60 FPS)
 ```
 
+## Progressive Web App (PWA)
+
+TimeVision is a fully installable PWA. Here's how everything works:
+
+### What is a PWA?
+
+A Progressive Web App is a website that behaves like a native mobile/desktop app. It can be installed to a home screen, works offline (partially), loads instantly from cache, and runs fullscreen without a browser address bar. The browser handles all of this — no app store needed.
+
+### How It Works Under the Hood
+
+#### 1. Web App Manifest (`/public/manifest.json`)
+
+This is a JSON file the browser reads to know how to "install" your site. It tells the browser:
+- What to name the app
+- What icon to use on the home screen
+- What color the splash screen should be
+- Whether to run fullscreen (standalone) or in a browser tab
+- What URL to open when launched
+
+When a browser detects a manifest + service worker combo, it shows an install prompt automatically.
+
+```json
+{
+  "name": "TimeVision - Virtual Watch Try-On",
+  "short_name": "TimeVision",
+  "display": "standalone",
+  "start_url": "/",
+  "theme_color": "#3b82f6",
+  "background_color": "#0f172a",
+  "icons": [...]
+}
+```
+
+#### 2. Service Worker (`/public/sw.js`)
+
+This is the core of the PWA. A service worker is a JavaScript file that runs in the background, completely separate from your webpage — it sits between your app and the internet, intercepting every network request.
+
+**How it gets registered:**
+
+```
+User visits site
+  → Browser downloads sw.js
+  → Installs it in the background
+  → Service worker activates and starts controlling the page
+  → All future requests go through the service worker first
+```
+
+**What it does with requests:**
+
+The service worker uses different caching strategies depending on the type of file:
+
+| File Type | Strategy | Explanation |
+|-----------|----------|-------------|
+| Google Fonts | CacheFirst | Load from cache, only go to network if not cached. Valid for 1 year. |
+| Images (PNG, SVG, etc.) | StaleWhileRevalidate | Serve cached version instantly, then update cache in background for next time. Valid 1 day. |
+| JavaScript bundles | StaleWhileRevalidate | Same — instant load from cache, update quietly. Valid 1 day. |
+| CSS files | StaleWhileRevalidate | Same approach. Valid 1 day. |
+| API calls | NetworkFirst | Always try the network first. Fall back to cache if offline. 10s timeout. |
+| Everything else | NetworkFirst | Try network, fall back to cache. |
+
+This means: after your first visit, most of the app loads from the local device cache — making it extremely fast even on slow connections.
+
+#### 3. App Icons (`/public/icons/`)
+
+PWAs need icons in many sizes for different devices and contexts:
+
+| Size | Used For |
+|------|----------|
+| 72x72 | Older Android home screens |
+| 96x96 | Chrome app grid |
+| 128x128 | Chrome Web Store |
+| 144x144 | Windows pinned sites |
+| 152x152 | iOS home screen (iPad) |
+| 192x192 | Android home screen, PWA install prompt |
+| 384x384 | Android splash screen |
+| 512x512 | Android splash screen, app store listings |
+
+All icons are generated automatically from a single source SVG (`/public/icon.svg`) using the `sharp` image processing library via `scripts/generate-icons.mjs`.
+
+#### 4. Install Prompt (`/components/ui/InstallPrompt.tsx`)
+
+Browsers fire a `beforeinstallprompt` event when they decide the site is installable. By default the browser handles this itself, but we intercept it so we can show our own custom prompt at the right moment.
+
+```
+Browser fires beforeinstallprompt
+  → We call e.preventDefault() to suppress the default prompt
+  → We store the event object
+  → After 3 seconds, we show our custom UI
+  → User clicks "Install"
+  → We call deferredPrompt.prompt() — this shows the real OS-level install dialog
+  → User confirms
+  → App is installed
+```
+
+If the user dismisses, we store a timestamp and won't bother them again for 7 days.
+
+#### 5. Offline Page (`/app/offline/page.tsx`)
+
+When the user is offline and tries to visit a page that isn't in the cache, the service worker serves this fallback page instead of a blank/error screen. It tells the user they're offline and gives them options to retry.
+
+#### 6. next-pwa Plugin (`next.config.ts`)
+
+`next-pwa` is a plugin for Next.js that automatically generates the service worker file at build time. You configure caching rules in `next.config.ts`, and it compiles them into the final `sw.js` using Google's Workbox library under the hood.
+
+**Why `--webpack` flag?** Next.js 16 defaults to Turbopack as the bundler, but `next-pwa` injects webpack plugins to build the service worker. Turbopack doesn't support webpack plugins yet, so we use `--webpack` to use the classic bundler for production builds.
+
+### File Structure
+
+```
+public/
+├── manifest.json           # PWA manifest
+├── icon.svg                # Source icon (master design)
+├── icons/                  # Generated icons (all sizes)
+│   ├── icon-72x72.png
+│   ├── icon-96x96.png
+│   ├── icon-128x128.png
+│   ├── icon-144x144.png
+│   ├── icon-152x152.png
+│   ├── icon-192x192.png
+│   ├── icon-384x384.png
+│   └── icon-512x512.png
+├── sw.js                   # Generated service worker (build output, gitignored)
+└── workbox-*.js            # Workbox runtime (build output, gitignored)
+
+components/ui/
+└── InstallPrompt.tsx       # Custom install prompt UI
+
+app/
+└── offline/page.tsx        # Offline fallback page
+
+scripts/
+└── generate-icons.mjs      # Icon generation from SVG
+
+types/
+└── next-pwa.d.ts           # TypeScript types for next-pwa
+```
+
+### What Works Offline
+
+After the first visit, the service worker caches static assets:
+
+| Feature | Offline Status |
+|---------|---------------|
+| Landing page (`/`) | Cached — works offline |
+| Watch catalog (`/watches`) | Cached — but no product images |
+| Navigation between pages | Works for previously visited pages |
+| Camera access | Works (native device API) |
+| AR hand tracking | Requires internet (MediaPipe WASM files are large) |
+| 3D watch models | Requires internet (GLB files not pre-cached) |
+
+### Installing the App
+
+**Desktop (Chrome/Edge):**
+1. Visit the site
+2. Look for the install icon in the address bar, or use the custom install prompt
+3. Click Install
+4. App opens in its own window without browser UI
+
+**Mobile (Android):**
+1. Visit the site in Chrome
+2. Tap the three-dot menu
+3. Tap "Add to Home Screen"
+4. Or use the custom install prompt when it appears
+
+**Mobile (iOS):**
+1. Visit in Safari
+2. Tap the Share icon
+3. Tap "Add to Home Screen"
+
+> Note: iOS Safari has more limited PWA support — no `beforeinstallprompt` event, so the custom install prompt won't appear. Users must use the manual share flow.
+
+### Regenerating Icons
+
+If you update the app icon, regenerate all sizes:
+
+```bash
+node scripts/generate-icons.mjs
+```
+
+This reads `/public/icon.svg` and outputs all 8 PNG sizes to `/public/icons/`.
+
 ## Development
 
 ### Available Scripts
@@ -162,9 +348,8 @@ React Component Tree
 ```bash
 # Development server
 pnpm run dev
-
-# Production build
-pnpm run build
+# Production build (with PWA service worker)
+pnpm run build -- --webpack
 
 # Start production server
 pnpm run start
@@ -174,6 +359,9 @@ pnpm run lint
 
 # Manually sync MediaPipe assets
 pnpm run sync:mediapipe
+
+# Regenerate PWA icons
+node scripts/generate-icons.mjs
 ```
 
 ### Adding a New Watch Model

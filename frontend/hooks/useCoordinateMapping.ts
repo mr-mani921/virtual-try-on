@@ -6,6 +6,7 @@ import type { HandDetection } from '@/lib/mediapipe/types'
 import {
   landmarkToWorld,
   computeWristQuaternion,
+  computePalmNormal,
   type WorldCoordinates,
   type CoordinateMappingOptions,
 } from '@/lib/three/coordinateMapping'
@@ -21,6 +22,12 @@ interface MappedHandData {
   indexBasePosition: WorldCoordinates
   pinkyBasePosition: WorldCoordinates
   handOrientation: THREE.Quaternion
+  /**
+   * Direct palm normal: normalize(cross(indexBase - wrist, pinkyBase - wrist)).
+   * Points toward the palmar side of the hand.
+   * Negate to get the dorsal direction (where the watch sits).
+   */
+  palmNormal: THREE.Vector3
   allLandmarksWorld: WorldCoordinates[]
 }
 
@@ -66,6 +73,12 @@ export function useCoordinateMapping(
       pinkyBasePosition
     )
 
+    const palmNormal = computePalmNormal(
+      wristPosition,
+      indexBasePosition,
+      pinkyBasePosition
+    )
+
     const allLandmarksWorld = handDetection.landmarks.allLandmarks.map(landmark =>
       landmarkToWorld(landmark, mappingOptions)
     )
@@ -75,6 +88,7 @@ export function useCoordinateMapping(
       indexBasePosition,
       pinkyBasePosition,
       handOrientation,
+      palmNormal,
       allLandmarksWorld,
     }
   }, [handDetection, camera, videoWidth, videoHeight, flipHorizontal])
