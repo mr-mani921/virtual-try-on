@@ -21,9 +21,11 @@
         "NSCameraUsageDescription": "TimeVision needs camera access to enable virtual watch try-on using augmented reality. Your camera feed is processed locally and never stored or transmitted.",
         "NSMicrophoneUsageDescription": "TimeVision may need microphone access for video recording features.",
         "NSPhotoLibraryUsageDescription": "TimeVision needs access to save photos of your virtual watch try-on experience.",
-        "NSPhotoLibraryAddUsageDescription": "TimeVision needs access to save photos of your virtual watch try-on experience."
+        "NSPhotoLibraryAddUsageDescription": "TimeVision needs access to save photos of your virtual watch try-on experience.",
+        "UIViewControllerBasedStatusBarAppearance": false
       },
-      "bitcode": false
+      "bitcode": false,
+      "requireFullScreen": false
     },
     "android": {
       "package": "com.timevision.ar",
@@ -41,7 +43,9 @@
         "READ_EXTERNAL_STORAGE"
       ],
       "predictiveBackGestureEnabled": false,
-      "userInterfaceStyle": "dark"
+      "userInterfaceStyle": "dark",
+      "softwareKeyboardLayoutMode": "pan",
+      "hardwareAccelerated": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -61,6 +65,9 @@
           "imageWidth": 200
         }
       ]
-    ]
+    ],
+    "experiments": {
+      "tsconfigPaths": true
+    }
   }
 }
