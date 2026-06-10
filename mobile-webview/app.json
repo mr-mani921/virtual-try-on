@@ -18,9 +18,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.timevision.ar",
       "infoPlist": {
-        "NSCameraUsageDescription": "TimeVision needs camera access to enable virtual watch try-on using augmented reality.",
-        "NSMicrophoneUsageDescription": "TimeVision may need microphone access for video recording features."
-      }
+        "NSCameraUsageDescription": "TimeVision needs camera access to enable virtual watch try-on using augmented reality. Your camera feed is processed locally and never stored or transmitted.",
+        "NSMicrophoneUsageDescription": "TimeVision may need microphone access for video recording features.",
+        "NSPhotoLibraryUsageDescription": "TimeVision needs access to save photos of your virtual watch try-on experience.",
+        "NSPhotoLibraryAddUsageDescription": "TimeVision needs access to save photos of your virtual watch try-on experience."
+      },
+      "bitcode": false
     },
     "android": {
       "package": "com.timevision.ar",
@@ -31,14 +34,25 @@
       "permissions": [
         "CAMERA",
         "INTERNET",
-        "ACCESS_NETWORK_STATE"
+        "ACCESS_NETWORK_STATE",
+        "MODIFY_AUDIO_SETTINGS",
+        "RECORD_AUDIO",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE"
       ],
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "userInterfaceStyle": "dark"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "TimeVision needs camera access to enable AR watch try-on."
+        }
+      ],
       [
         "expo-splash-screen",
         {
