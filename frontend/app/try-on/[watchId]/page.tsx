@@ -239,7 +239,6 @@ export default function TryOnPage() {
         <CameraView
           onStreamReady={handleStreamReady}
           onVideoReady={handleVideoReady}
-          showControls={false}
           handDetection={handDetection}
           videoElement={videoElement}
           showLandmarks={false}

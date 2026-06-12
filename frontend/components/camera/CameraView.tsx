@@ -1,8 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CameraStream } from './CameraStream'
-import { CameraControls } from './CameraControls'
 import { HandLandmarksCanvas } from './HandLandmarksCanvas'
 import type { HandDetection } from '@/lib/mediapipe/types'
 
@@ -25,6 +24,36 @@ export function CameraView({
 }: CameraViewProps) {
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
 
+  // Detect if device has multiple cameras and choose appropriate default
+  useEffect(() => {
+    const detectCameras = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const videoDevices = devices.filter(device => device.kind === 'videoinput')
+        
+        console.log('Camera detection:', {
+          totalCameras: videoDevices.length,
+          cameras: videoDevices.map(d => ({ label: d.label, id: d.deviceId }))
+        })
+        
+        // If device has multiple cameras, use rear camera (better for AR watch try-on)
+        if (videoDevices.length > 1) {
+          console.log('Multiple cameras detected, using rear camera')
+          setFacingMode('environment')
+        } else {
+          console.log('Single camera detected, using front camera')
+          setFacingMode('user')
+        }
+      } catch (error) {
+        console.warn('Failed to enumerate devices:', error)
+        // Default to front camera on error
+        setFacingMode('user')
+      }
+    }
+
+    detectCameras()
+  }, [])
+
   return (
     <div className="absolute inset-0 w-full h-full">
       <CameraStream 
@@ -38,13 +67,6 @@ export function CameraView({
         <HandLandmarksCanvas
           handDetection={handDetection || null}
           videoElement={videoElement || null}
-        />
-      )}
-      
-      {showControls && (
-        <CameraControls 
-          currentFacingMode={facingMode}
-          onFacingModeChange={setFacingMode}
         />
       )}
     </div>
