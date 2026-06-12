@@ -164,9 +164,13 @@ export default function Home() {
     handTrackingStartedRef.current = true
     
     console.log('Video element ready, starting hand tracking...')
-    startTracking(video)
-      .then(() => console.log('Hand tracking started successfully'))
-      .catch(err => console.error('Failed to start hand tracking:', err))
+    
+    // Small delay to ensure video is fully ready
+    setTimeout(() => {
+      startTracking(video)
+        .then(() => console.log('Hand tracking started successfully'))
+        .catch(err => console.error('Failed to start hand tracking:', err))
+    }, 100)
   }, [startTracking])
 
   const handDetected = handDetection !== null

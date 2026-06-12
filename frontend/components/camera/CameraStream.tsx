@@ -60,7 +60,15 @@ export function CameraStream({
 
         // Stop existing stream if any
         if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop())
+          console.log('Stopping existing camera stream before switching')
+          streamRef.current.getTracks().forEach(track => {
+            track.stop()
+            console.log('Track stopped:', track.label)
+          })
+          streamRef.current = null
+          
+          // Small delay to ensure camera is fully released
+          await new Promise(resolve => setTimeout(resolve, 300))
         }
 
         // Request camera access
