@@ -24,28 +24,38 @@ export function CameraStream({
   // Assign stream to video element when both are ready
   useEffect(() => {
     if (streamRef.current && videoRef.current && !isLoading) {
-      videoRef.current.srcObject = streamRef.current
-      
-      console.log('Stream assigned to video element', {
-        streamActive: streamRef.current.active,
-        videoTracks: streamRef.current.getVideoTracks().length,
-        videoTrackEnabled: streamRef.current.getVideoTracks()[0]?.enabled,
-        facingMode,
-      })
-      
-      videoRef.current.onloadedmetadata = () => {
-        console.log('Video metadata loaded for facingMode:', facingMode)
-        videoRef.current?.play()
-          .then(() => {
-            console.log('Video playing')
-            if (videoRef.current) {
-              onVideoReady?.(videoRef.current)
-            }
-          })
-          .catch(err => console.warn('Video play failed:', err))
+      // Clear any existing srcObject first
+      if (videoRef.current.srcObject) {
+        videoRef.current.srcObject = null
       }
+      
+      // Small delay to ensure clean state
+      setTimeout(() => {
+        if (videoRef.current && streamRef.current) {
+          videoRef.current.srcObject = streamRef.current
+          
+          console.log('Stream assigned to video element', {
+            streamActive: streamRef.current.active,
+            videoTracks: streamRef.current.getVideoTracks().length,
+            videoTrackEnabled: streamRef.current.getVideoTracks()[0]?.enabled,
+            facingMode,
+          })
+          
+          videoRef.current.onloadedmetadata = () => {
+            console.log('Video metadata loaded for facingMode:', facingMode)
+            videoRef.current?.play()
+              .then(() => {
+                console.log('Video playing successfully')
+                if (videoRef.current) {
+                  onVideoReady?.(videoRef.current)
+                }
+              })
+              .catch(err => console.warn('Video play failed:', err))
+          }
+        }
+      }, 100)
     }
-  }, [isLoading, facingMode])
+  }, [isLoading, facingMode, onVideoReady])
 
   useEffect(() => {
     let mounted = true
@@ -155,6 +165,7 @@ export function CameraStream({
   return (
     <div className="absolute inset-0 w-full h-full ">
       <video
+        key={`camera-${facingMode}`}
         ref={videoRef}
         autoPlay
         playsInline
