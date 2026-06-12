@@ -28,8 +28,15 @@ export function CameraView({
   useEffect(() => {
     const detectCameras = async () => {
       try {
+        // First, request camera permission to get device labels
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+        
+        // Now enumerate devices (will have labels after permission granted)
         const devices = await navigator.mediaDevices.enumerateDevices()
         const videoDevices = devices.filter(device => device.kind === 'videoinput')
+        
+        // Stop the temporary stream
+        stream.getTracks().forEach(track => track.stop())
         
         console.log('Camera detection:', {
           totalCameras: videoDevices.length,
