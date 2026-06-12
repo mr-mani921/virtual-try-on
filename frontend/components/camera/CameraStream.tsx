@@ -21,46 +21,8 @@ export function CameraStream({
   const [error, setError] = useState<string | null>(null)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
 
-  // Assign stream to video element when both are ready
-  useEffect(() => {
-    if (streamRef.current && videoRef.current && !isLoading) {
-      // Clear any existing srcObject first
-      if (videoRef.current.srcObject) {
-        videoRef.current.srcObject = null
-      }
-      
-      // Small delay to ensure clean state
-      setTimeout(() => {
-        if (videoRef.current && streamRef.current) {
-          videoRef.current.srcObject = streamRef.current
-          
-          console.log('Stream assigned to video element', {
-            streamActive: streamRef.current.active,
-            videoTracks: streamRef.current.getVideoTracks().length,
-            videoTrackEnabled: streamRef.current.getVideoTracks()[0]?.enabled,
-            facingMode,
-          })
-          
-          videoRef.current.onloadedmetadata = () => {
-            console.log('Video metadata loaded for facingMode:', facingMode)
-            videoRef.current?.play()
-              .then(() => {
-                console.log('Video playing successfully')
-                if (videoRef.current) {
-                  onVideoReady?.(videoRef.current)
-                }
-              })
-              .catch(err => console.warn('Video play failed:', err))
-          }
-        }
-      }, 100)
-    }
-  }, [isLoading, facingMode, onVideoReady])
-
   useEffect(() => {
     let mounted = true
-    const onStreamReadyRef = onStreamReady
-    const onErrorRef = onError
 
     const startCamera = async () => {
       try {
@@ -76,14 +38,16 @@ export function CameraStream({
           })
           streamRef.current = null
           
-          // Small delay to ensure camera is fully released
-          await new Promise(resolve => setTimeout(resolve, 300))
+          // Wait for camera to be fully released
+          await new Promise(resolve => setTimeout(resolve, 500))
         }
+
+        console.log('Requesting camera with facingMode:', facingMode)
 
         // Request camera access
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode,
+            facingMode: { exact: facingMode },
             width: { ideal: 1280 },
             height: { ideal: 720 },
           },
@@ -95,15 +59,51 @@ export function CameraStream({
           return
         }
 
+        console.log('Camera stream obtained:', {
+          active: stream.active,
+          tracks: stream.getVideoTracks().length,
+          trackLabel: stream.getVideoTracks()[0]?.label
+        })
+
         streamRef.current = stream
         setHasPermission(true)
-        setIsLoading(false)
-        onStreamReadyRef?.(stream)
+
+        // Assign stream to video element
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          
+          videoRef.current.onloadedmetadata = async () => {
+            console.log('Video metadata loaded')
+            try {
+              await videoRef.current?.play()
+              console.log('Video playing successfully')
+              setIsLoading(false)
+              
+              if (videoRef.current) {
+                onVideoReady?.(videoRef.current)
+              }
+            } catch (playError) {
+              console.error('Video play failed:', playError)
+              setError('Failed to play video')
+              setIsLoading(false)
+            }
+          }
+
+          videoRef.current.onerror = (e) => {
+            console.error('Video element error:', e)
+            setError('Video playback error')
+            setIsLoading(false)
+          }
+        }
+
+        onStreamReady?.(stream)
       } catch (err) {
         if (!mounted) return
 
         const error = err as Error
         let errorMessage = 'Failed to access camera'
+
+        console.error('Camera error:', error)
 
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
           errorMessage = 'Camera permission denied'
@@ -113,12 +113,52 @@ export function CameraStream({
         } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
           errorMessage = 'Camera is already in use'
         } else if (error.name === 'OverconstrainedError') {
-          errorMessage = 'Camera does not support requested settings'
+          // Try without exact constraint
+          console.log('Exact facingMode failed, trying without exact constraint')
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: facingMode,
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
+              audio: false,
+            })
+
+            if (!mounted) {
+              stream.getTracks().forEach(track => track.stop())
+              return
+            }
+
+            streamRef.current = stream
+            setHasPermission(true)
+
+            if (videoRef.current) {
+              videoRef.current.srcObject = stream
+              videoRef.current.onloadedmetadata = async () => {
+                try {
+                  await videoRef.current?.play()
+                  setIsLoading(false)
+                  if (videoRef.current) {
+                    onVideoReady?.(videoRef.current)
+                  }
+                } catch (playError) {
+                  setError('Failed to play video')
+                  setIsLoading(false)
+                }
+              }
+            }
+
+            onStreamReady?.(stream)
+            return
+          } catch (retryError) {
+            errorMessage = 'Camera does not support requested settings'
+          }
         }
 
         setError(errorMessage)
         setIsLoading(false)
-        onErrorRef?.(new Error(errorMessage))
+        onError?.(new Error(errorMessage))
       }
     }
 
@@ -132,8 +172,11 @@ export function CameraStream({
         streamRef.current.getTracks().forEach(track => track.stop())
         streamRef.current = null
       }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null
+      }
     }
-  }, [facingMode])
+  }, [facingMode, onStreamReady, onError, onVideoReady])
 
   if (error) {
     return (
@@ -156,14 +199,16 @@ export function CameraStream({
       <div className="absolute inset-0 flex items-center justify-center w-full h-full bg-zinc-900">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white text-sm">Requesting camera access...</p>
+          <p className="text-white text-sm">
+            {facingMode === 'environment' ? 'Switching to rear camera...' : 'Requesting camera access...'}
+          </p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="absolute inset-0 w-full h-full ">
+    <div className="absolute inset-0 w-full h-full">
       <video
         key={`camera-${facingMode}`}
         ref={videoRef}
