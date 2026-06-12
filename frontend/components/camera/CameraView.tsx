@@ -38,6 +38,9 @@ export function CameraView({
         // Stop the temporary stream
         stream.getTracks().forEach(track => track.stop())
         
+        // Wait for camera to be fully released
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
         console.log('Camera detection:', {
           totalCameras: videoDevices.length,
           cameras: videoDevices.map(d => ({ label: d.label, id: d.deviceId }))
