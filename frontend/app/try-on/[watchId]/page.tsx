@@ -118,7 +118,13 @@ export default function TryOnPage() {
   }, [watchId])
 
   // Hand tracking
-  const { handDetection, isLoading: trackingLoading, error: trackingError, startTracking } = useHandTracking({
+  const {
+    handDetection,
+    isLoading: trackingLoading,
+    error: trackingError,
+    hasProcessedFrames,
+    startTracking,
+  } = useHandTracking({
     maxNumHands: 1,
     minDetectionConfidence: 0.7,
     minTrackingConfidence: 0.5,
@@ -138,18 +144,18 @@ export default function TryOnPage() {
   useEffect(() => {
     if (trackingError) {
       setTrackingState('lost')
-    } else if (trackingLoading) {
+    } else if (trackingLoading || (cameraReady && !hasProcessedFrames && !handDetection)) {
       setTrackingState('initializing')
-    } else if (cameraReady && !handDetection) {
-      setTrackingState('searching')
     } else if (handDetection) {
       setTrackingState('detected')
+    } else if (cameraReady && hasProcessedFrames) {
+      setTrackingState('searching')
     }
-  }, [trackingError, trackingLoading, cameraReady, handDetection])
+  }, [trackingError, trackingLoading, cameraReady, hasProcessedFrames, handDetection])
 
   const handleStreamReady = useCallback(() => {
     setCameraReady(true)
-    setTrackingState('searching')
+    setTrackingState('initializing')
   }, [])
 
   const handleVideoReady = useCallback(
@@ -160,7 +166,7 @@ export default function TryOnPage() {
       handTrackingStartedRef.current = true
 
       startTracking(video)
-        .then(() => setTrackingState('searching'))
+        .then(() => setTrackingState((state) => (state === 'lost' ? state : 'initializing')))
         .catch((err) => {
           console.error('Failed to start hand tracking:', err)
           setTrackingState('lost')

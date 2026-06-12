@@ -57,21 +57,32 @@ export function CameraStream({
       try {
         setIsLoading(true)
         setError(null)
+        videoReadyCalledRef.current = false
 
         // Stop existing stream if any
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop())
         }
 
-        // Request camera access
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode,
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        })
+        const getCameraStream = (mode: 'user' | 'environment') =>
+          navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: mode },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+            audio: false,
+          })
+
+        let stream: MediaStream
+        try {
+          stream = await getCameraStream(facingMode)
+        } catch (err) {
+          if (facingMode !== 'environment') throw err
+
+          console.warn('Rear camera request failed, falling back to front camera:', err)
+          stream = await getCameraStream('user')
+        }
 
         if (!mounted) {
           stream.getTracks().forEach(track => track.stop())

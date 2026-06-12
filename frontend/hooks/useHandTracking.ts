@@ -16,6 +16,7 @@ interface UseHandTrackingReturn {
   isLoading: boolean
   error: string | null
   handDetection: HandDetection | null
+  hasProcessedFrames: boolean
   startTracking: (videoElement: HTMLVideoElement) => Promise<void>
   stopTracking: () => void
 }
@@ -34,10 +35,11 @@ export function useHandTracking(
   const [error, setError] = useState<string | null>(null)
   const [handDetection, setHandDetection] = useState<HandDetection | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
+  const [hasProcessedFrames, setHasProcessedFrames] = useState(false)
 
   const handsRef = useRef<any>(null)
-  const cameraRef = useRef<any>(null)
   const animationFrameRef = useRef<number | null>(null)
+  const isSendingFrameRef = useRef(false)
   const onHandDetectedRef = useRef(onHandDetected)
 
   useEffect(() => {
@@ -52,17 +54,14 @@ export function useHandTracking(
       animationFrameRef.current = null
     }
 
-    if (cameraRef.current) {
-      cameraRef.current.stop()
-      cameraRef.current = null
-    }
-
     if (handsRef.current) {
       handsRef.current.close()
       handsRef.current = null
     }
 
+    isSendingFrameRef.current = false
     setIsInitialized(false)
+    setHasProcessedFrames(false)
     setHandDetection(null)
   }, [])
 
@@ -76,13 +75,10 @@ export function useHandTracking(
       try {
         setIsLoading(true)
         setError(null)
-        setIsInitialized(true)
-
         console.log('Initializing MediaPipe Hands...')
 
         // Dynamically import MediaPipe (client-side only)
         const { Hands } = await import('@mediapipe/hands')
-        const { Camera } = await import('@mediapipe/camera_utils')
 
         // Initialize MediaPipe Hands
         const hands = new Hands({
@@ -97,6 +93,8 @@ export function useHandTracking(
         })
 
         hands.onResults((results) => {
+          setHasProcessedFrames(true)
+
           if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
             const landmarks = results.multiHandLandmarks[0]
             const rawHandedness = results.multiHandedness?.[0]?.label || 'Right'
@@ -127,28 +125,82 @@ export function useHandTracking(
 
         handsRef.current = hands
 
-        // Initialize camera
-        const camera = new Camera(videoElement, {
-          onFrame: async () => {
-            if (handsRef.current) {
-              await handsRef.current.send({ image: videoElement })
+        const waitForVideoFrame = () =>
+          new Promise<void>((resolve, reject) => {
+            if (videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && videoElement.videoWidth > 0) {
+              resolve()
+              return
             }
-          },
-          width: 1280,
-          height: 720,
-        })
 
-        cameraRef.current = camera
-        await camera.start()
+            const timeout = window.setTimeout(() => {
+              cleanup()
+              reject(new Error('Camera video did not become ready for hand tracking'))
+            }, 5000)
+
+            const cleanup = () => {
+              window.clearTimeout(timeout)
+              videoElement.removeEventListener('loadeddata', onReady)
+              videoElement.removeEventListener('playing', onReady)
+            }
+
+            const onReady = () => {
+              if (videoElement.videoWidth === 0) return
+              cleanup()
+              resolve()
+            }
+
+            videoElement.addEventListener('loadeddata', onReady)
+            videoElement.addEventListener('playing', onReady)
+          })
+
+        await waitForVideoFrame()
+
+        const sendFrame = async () => {
+          if (!handsRef.current) return
+
+          const stream = videoElement.srcObject as MediaStream | null
+          const videoTrack = stream?.getVideoTracks()[0]
+          const canSendFrame =
+            videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+            videoElement.videoWidth > 0 &&
+            videoElement.videoHeight > 0 &&
+            videoTrack?.readyState === 'live' &&
+            !videoElement.paused &&
+            !videoElement.ended
+
+          if (canSendFrame && !isSendingFrameRef.current) {
+            isSendingFrameRef.current = true
+            try {
+              await handsRef.current.send({ image: videoElement })
+            } finally {
+              isSendingFrameRef.current = false
+            }
+          }
+
+          animationFrameRef.current = requestAnimationFrame(sendFrame)
+        }
+
+        setIsInitialized(true)
+        animationFrameRef.current = requestAnimationFrame(sendFrame)
 
         setIsLoading(false)
         console.log('MediaPipe Hands initialized successfully')
       } catch (err) {
         const error = err as Error
         console.error('MediaPipe initialization error:', error)
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current)
+          animationFrameRef.current = null
+        }
+        if (handsRef.current) {
+          handsRef.current.close()
+          handsRef.current = null
+        }
+        isSendingFrameRef.current = false
         setError(error.message || 'Failed to initialize hand tracking')
         setIsLoading(false)
         setIsInitialized(false)
+        setHasProcessedFrames(false)
       }
     },
     [maxNumHands, minDetectionConfidence, minTrackingConfidence, isInitialized]
@@ -164,6 +216,7 @@ export function useHandTracking(
     isLoading,
     error,
     handDetection,
+    hasProcessedFrames,
     startTracking,
     stopTracking,
   }
