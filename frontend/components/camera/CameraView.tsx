@@ -22,44 +22,26 @@ export function CameraView({
   videoElement,
   showLandmarks = false,
 }: CameraViewProps) {
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
+  const [facingMode, setFacingMode] = useState<'user' | 'environment' | null>(null)
 
-  // Detect if device has multiple cameras and choose appropriate default
+  // Pick the initial camera without opening a temporary stream. Mobile browser
+  // camera stacks are sensitive to rapid getUserMedia start/stop/start cycles.
   useEffect(() => {
-    const detectCameras = async () => {
-      try {
-        // First, request camera permission to get device labels
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-        
-        // Now enumerate devices (will have labels after permission granted)
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        const videoDevices = devices.filter(device => device.kind === 'videoinput')
-        
-        // Stop the temporary stream
-        stream.getTracks().forEach(track => track.stop())
-        
-        console.log('Camera detection:', {
-          totalCameras: videoDevices.length,
-          cameras: videoDevices.map(d => ({ label: d.label, id: d.deviceId }))
-        })
-        
-        // If device has multiple cameras, use rear camera (better for AR watch try-on)
-        if (videoDevices.length > 1) {
-          console.log('Multiple cameras detected, using rear camera')
-          setFacingMode('environment')
-        } else {
-          console.log('Single camera detected, using front camera')
-          setFacingMode('user')
-        }
-      } catch (error) {
-        console.warn('Failed to enumerate devices:', error)
-        // Default to front camera on error
-        setFacingMode('user')
-      }
-    }
-
-    detectCameras()
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false
+    const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+    setFacingMode(coarsePointer || mobileUserAgent ? 'environment' : 'user')
   }, [])
+
+  if (!facingMode) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center w-full h-full bg-zinc-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-white text-sm">Preparing camera...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="absolute inset-0 w-full h-full">
