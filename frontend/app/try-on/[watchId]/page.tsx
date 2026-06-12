@@ -239,7 +239,7 @@ export default function TryOnPage() {
         <CameraView
           onStreamReady={handleStreamReady}
           onVideoReady={handleVideoReady}
-          showControls={false}
+          showControls={true}
           handDetection={handDetection}
           videoElement={videoElement}
           showLandmarks={false}
@@ -324,9 +324,9 @@ export default function TryOnPage() {
           </div>
         )}
 
-        {/* Watch Info Panel - Ticket 35 */}
+        {/* Watch Info Panel - Ticket 35 - Hidden on small screens */}
         {cameraReady && currentWatch && (
-          <div className="absolute bottom-6 left-6 max-w-sm z-20">
+          <div className="absolute bottom-6 left-6 max-w-sm z-20 hidden sm:block">
             <Card>
               <CardBody className="py-4">
                 <div className="flex items-start gap-4">

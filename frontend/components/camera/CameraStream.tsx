@@ -17,20 +17,20 @@ export function CameraStream({
 }: CameraStreamProps) {
   const videoRef = useRef<HTMLVideoElement>(null!)
   const streamRef = useRef<MediaStream | null>(null)
-  const videoReadyCalledRef = useRef(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
 
   // Assign stream to video element when both are ready
   useEffect(() => {
-    if (streamRef.current && videoRef.current && !isLoading && !videoReadyCalledRef.current) {
+    if (streamRef.current && videoRef.current && !isLoading) {
       videoRef.current.srcObject = streamRef.current
       
       console.log('Stream assigned to video element', {
         streamActive: streamRef.current.active,
         videoTracks: streamRef.current.getVideoTracks().length,
         videoTrackEnabled: streamRef.current.getVideoTracks()[0]?.enabled,
+        facingMode,
       })
       
       videoRef.current.onloadedmetadata = () => {
@@ -38,15 +38,14 @@ export function CameraStream({
         videoRef.current?.play()
           .then(() => {
             console.log('Video playing')
-            if (videoRef.current && !videoReadyCalledRef.current) {
-              videoReadyCalledRef.current = true
+            if (videoRef.current) {
               onVideoReady?.(videoRef.current)
             }
           })
           .catch(err => console.warn('Video play failed:', err))
       }
     }
-  }, [isLoading])
+  }, [isLoading, facingMode, onVideoReady])
 
   useEffect(() => {
     let mounted = true
@@ -60,8 +59,20 @@ export function CameraStream({
 
         // Stop existing stream if any
         if (streamRef.current) {
+          console.log('Stopping previous camera stream')
           streamRef.current.getTracks().forEach(track => track.stop())
+          streamRef.current = null
         }
+
+        // Clear video element
+        if (videoRef.current) {
+          videoRef.current.srcObject = null
+        }
+
+        // Wait for camera release
+        await new Promise(resolve => setTimeout(resolve, 300))
+
+        if (!mounted) return
 
         // Request camera access
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -115,7 +126,9 @@ export function CameraStream({
         streamRef.current.getTracks().forEach(track => track.stop())
         streamRef.current = null
       }
-      videoReadyCalledRef.current = false
+      if (videoRef.current) {
+        videoRef.current.srcObject = null
+      }
     }
   }, [facingMode])
 
@@ -140,7 +153,9 @@ export function CameraStream({
       <div className="absolute inset-0 flex items-center justify-center w-full h-full bg-zinc-900">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white text-sm">Requesting camera access...</p>
+          <p className="text-white text-sm">
+            {facingMode === 'environment' ? 'Switching to rear camera...' : 'Requesting camera access...'}
+          </p>
         </div>
       </div>
     )
