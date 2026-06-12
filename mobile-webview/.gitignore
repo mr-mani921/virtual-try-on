@@ -1,0 +1,59 @@
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.ipa
+*.apk
+
+# Metro
+.metro-health-check*
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Ruby
+.direnv/
+
+# macOS
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Android
+android/
+.gradle/
+local.properties
+
+# iOS
+ios/
+Pods/
+*.xcworkspace
+!default.xcworkspace
+xcuserdata/
+DerivedData/
+
+# Testing
+coverage/
+*.log
