@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface CameraControlsProps {
   onFacingModeChange: (mode: 'user' | 'environment') => void
@@ -8,17 +8,42 @@ interface CameraControlsProps {
 }
 
 export function CameraControls({ onFacingModeChange, currentFacingMode }: CameraControlsProps) {
-  const [isSupported, setIsSupported] = useState(true)
+  const [hasMultipleCameras, setHasMultipleCameras] = useState(false)
+
+  useEffect(() => {
+    // Check if device has multiple cameras
+    const checkCameras = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const videoDevices = devices.filter(device => device.kind === 'videoinput')
+        
+        // Show camera switcher only if:
+        // 1. There are multiple cameras
+        // 2. Device is mobile (user agent check)
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+        
+        setHasMultipleCameras(videoDevices.length > 1 && isMobile)
+        
+        console.log('Camera check:', {
+          totalCameras: videoDevices.length,
+          isMobile,
+          willShowSwitcher: videoDevices.length > 1 && isMobile
+        })
+      } catch (error) {
+        console.warn('Failed to enumerate devices:', error)
+        setHasMultipleCameras(false)
+      }
+    }
+
+    checkCameras()
+  }, [])
 
   const handleSwitch = () => {
     const newMode = currentFacingMode === 'user' ? 'environment' : 'user'
     onFacingModeChange(newMode)
   }
 
-  const isMobile = typeof window !== 'undefined' && 
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-
-  if (!isMobile || !isSupported) {
+  if (!hasMultipleCameras) {
     return null
   }
 

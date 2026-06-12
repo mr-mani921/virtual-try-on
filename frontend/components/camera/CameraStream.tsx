@@ -17,36 +17,35 @@ export function CameraStream({
 }: CameraStreamProps) {
   const videoRef = useRef<HTMLVideoElement>(null!)
   const streamRef = useRef<MediaStream | null>(null)
-  const videoReadyCalledRef = useRef(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
 
   // Assign stream to video element when both are ready
   useEffect(() => {
-    if (streamRef.current && videoRef.current && !isLoading && !videoReadyCalledRef.current) {
+    if (streamRef.current && videoRef.current && !isLoading) {
       videoRef.current.srcObject = streamRef.current
       
       console.log('Stream assigned to video element', {
         streamActive: streamRef.current.active,
         videoTracks: streamRef.current.getVideoTracks().length,
         videoTrackEnabled: streamRef.current.getVideoTracks()[0]?.enabled,
+        facingMode,
       })
       
       videoRef.current.onloadedmetadata = () => {
-        console.log('Video metadata loaded')
+        console.log('Video metadata loaded for facingMode:', facingMode)
         videoRef.current?.play()
           .then(() => {
             console.log('Video playing')
-            if (videoRef.current && !videoReadyCalledRef.current) {
-              videoReadyCalledRef.current = true
+            if (videoRef.current) {
               onVideoReady?.(videoRef.current)
             }
           })
           .catch(err => console.warn('Video play failed:', err))
       }
     }
-  }, [isLoading])
+  }, [isLoading, facingMode])
 
   useEffect(() => {
     let mounted = true
@@ -123,7 +122,6 @@ export function CameraStream({
         streamRef.current.getTracks().forEach(track => track.stop())
         streamRef.current = null
       }
-      videoReadyCalledRef.current = false
     }
   }, [facingMode])
 

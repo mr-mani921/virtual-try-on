@@ -101,7 +101,6 @@ export default function TryOnPage() {
   const [cameraReady, setCameraReady] = useState(false)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [trackingState, setTrackingState] = useState<'loading' | 'initializing' | 'searching' | 'detected' | 'lost'>('loading')
-  const handTrackingStartedRef = useRef(false)
 
   // Watch configuration
   const watchConfig = useWatchConfig('default')
@@ -154,13 +153,16 @@ export default function TryOnPage() {
 
   const handleVideoReady = useCallback(
     (video: HTMLVideoElement) => {
-      if (handTrackingStartedRef.current) return
-
       setVideoElement(video)
-      handTrackingStartedRef.current = true
 
+      // Always restart tracking when video is ready (handles camera switches)
+      console.log('Video ready, restarting hand tracking...')
+      
       startTracking(video)
-        .then(() => setTrackingState('searching'))
+        .then(() => {
+          console.log('Hand tracking restarted successfully')
+          setTrackingState('searching')
+        })
         .catch((err) => {
           console.error('Failed to start hand tracking:', err)
           setTrackingState('lost')

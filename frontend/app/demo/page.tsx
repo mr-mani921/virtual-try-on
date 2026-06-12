@@ -115,7 +115,6 @@ export default function Home() {
   const [showWristAnchor, setShowWristAnchor] = useState(false)
   const [showWatchModel, setShowWatchModel] = useState(true)
   const [showWatchSelector, setShowWatchSelector] = useState(false)
-  const handTrackingStartedRef = useRef(false)
 
   // Watch configuration hook (for manual adjustments)
   const watchConfig = useWatchConfig('default')
@@ -155,22 +154,14 @@ export default function Home() {
   }, [])
 
   const handleVideoReady = useCallback((video: HTMLVideoElement) => {
-    if (handTrackingStartedRef.current) {
-      console.log('Hand tracking already started, skipping...')
-      return
-    }
-    
     setVideoElement(video)
-    handTrackingStartedRef.current = true
     
-    console.log('Video element ready, starting hand tracking...')
+    console.log('Video element ready, restarting hand tracking...')
     
-    // Small delay to ensure video is fully ready
-    setTimeout(() => {
-      startTracking(video)
-        .then(() => console.log('Hand tracking started successfully'))
-        .catch(err => console.error('Failed to start hand tracking:', err))
-    }, 100)
+    // Restart tracking when video changes (handles camera switches)
+    startTracking(video)
+      .then(() => console.log('Hand tracking started successfully'))
+      .catch(err => console.error('Failed to start hand tracking:', err))
   }, [startTracking])
 
   const handDetected = handDetection !== null
