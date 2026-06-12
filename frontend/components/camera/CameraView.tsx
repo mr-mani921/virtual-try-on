@@ -7,6 +7,8 @@ import { HandLandmarksCanvas } from './HandLandmarksCanvas'
 import type { HandDetection } from '@/lib/mediapipe/types'
 
 interface CameraViewProps {
+  facingMode?: 'user' | 'environment'
+  onFacingModeChange?: (mode: 'user' | 'environment') => void
   onStreamReady?: (stream: MediaStream) => void
   onVideoReady?: (video: HTMLVideoElement) => void
   showControls?: boolean
@@ -16,6 +18,8 @@ interface CameraViewProps {
 }
 
 export function CameraView({ 
+  facingMode: externalFacingMode,
+  onFacingModeChange,
   onStreamReady,
   onVideoReady,
   showControls = true,
@@ -23,7 +27,18 @@ export function CameraView({
   videoElement,
   showLandmarks = false,
 }: CameraViewProps) {
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
+  // If the parent controls facingMode externally, use that.
+  // Otherwise manage it internally (demo page behaviour).
+  const [internalFacingMode, setInternalFacingMode] = useState<'user' | 'environment'>('user')
+
+  const facingMode = externalFacingMode ?? internalFacingMode
+  const handleFacingModeChange = (mode: 'user' | 'environment') => {
+    if (onFacingModeChange) {
+      onFacingModeChange(mode)
+    } else {
+      setInternalFacingMode(mode)
+    }
+  }
 
   return (
     <div className="absolute inset-0 w-full h-full">
@@ -44,7 +59,7 @@ export function CameraView({
       {showControls && (
         <CameraControls 
           currentFacingMode={facingMode}
-          onFacingModeChange={setFacingMode}
+          onFacingModeChange={handleFacingModeChange}
         />
       )}
     </div>

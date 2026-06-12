@@ -101,6 +101,7 @@ export default function TryOnPage() {
   const [cameraReady, setCameraReady] = useState(false)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [trackingState, setTrackingState] = useState<'loading' | 'initializing' | 'searching' | 'detected' | 'lost'>('loading')
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
   const handTrackingStartedRef = useRef(false)
 
   // Watch configuration
@@ -150,6 +151,8 @@ export default function TryOnPage() {
   const handleStreamReady = useCallback(() => {
     setCameraReady(true)
     setTrackingState('searching')
+    // Reset tracking so it restarts on the new stream
+    handTrackingStartedRef.current = false
   }, [])
 
   const handleVideoReady = useCallback(
@@ -237,9 +240,11 @@ export default function TryOnPage() {
       <div className="relative w-full h-full pt-[72px]">
         {/* Camera View */}
         <CameraView
+          facingMode={facingMode}
+          onFacingModeChange={setFacingMode}
           onStreamReady={handleStreamReady}
           onVideoReady={handleVideoReady}
-          showControls={false}
+          showControls={true}
           handDetection={handDetection}
           videoElement={videoElement}
           showLandmarks={false}

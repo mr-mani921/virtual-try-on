@@ -32,7 +32,7 @@ npm install
 Edit `src/screens/WebViewScreen.tsx` and change the URL:
 
 ```typescript
-const WEBAPP_URL = 'https://your-deployed-app-url';
+const WEBAPP_URL = 'https://virtualtryonwatches.netlify.app';
 ```
 
 For local development:
