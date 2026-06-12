@@ -22,36 +22,56 @@ export function CameraStream({
   const [error, setError] = useState<string | null>(null)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
 
+  // Assign stream to video element when both are ready
+  useEffect(() => {
+    if (streamRef.current && videoRef.current && !isLoading && !videoReadyCalledRef.current) {
+      videoRef.current.srcObject = streamRef.current
+      
+      console.log('Stream assigned to video element', {
+        streamActive: streamRef.current.active,
+        videoTracks: streamRef.current.getVideoTracks().length,
+        videoTrackEnabled: streamRef.current.getVideoTracks()[0]?.enabled,
+      })
+      
+      videoRef.current.onloadedmetadata = () => {
+        console.log('Video metadata loaded')
+        videoRef.current?.play()
+          .then(() => {
+            console.log('Video playing')
+            if (videoRef.current && !videoReadyCalledRef.current) {
+              videoReadyCalledRef.current = true
+              onVideoReady?.(videoRef.current)
+            }
+          })
+          .catch(err => console.warn('Video play failed:', err))
+      }
+    }
+  }, [isLoading])
+
   useEffect(() => {
     let mounted = true
     const onStreamReadyRef = onStreamReady
     const onErrorRef = onError
 
     const startCamera = async () => {
-      // ── 1. Fully stop any existing stream before requesting a new one ──
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop())
-        streamRef.current = null
-      }
-
-      // ── 2. Detach from video element so the OS releases the device ──
-      if (videoRef.current) {
-        videoRef.current.srcObject = null
-      }
-
-      // Reset per-switch state
-      videoReadyCalledRef.current = false
-      setIsLoading(true)
-      setError(null)
-
-      // ── 3. Small delay to let the OS fully release the camera device ──
-      //    Without this, some Android/iOS browsers throw NotReadableError
-      //    immediately after stopping the previous track.
-      await new Promise(resolve => setTimeout(resolve, 300))
-
-      if (!mounted) return
-
       try {
+        setIsLoading(true)
+        setError(null)
+
+        // Stop existing stream if any
+        if (streamRef.current) {
+          console.log('Stopping existing camera stream before switching')
+          streamRef.current.getTracks().forEach(track => {
+            track.stop()
+            console.log('Track stopped:', track.label)
+          })
+          streamRef.current = null
+          
+          // Small delay to ensure camera is fully released
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+
+        // Request camera access
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode,
@@ -68,26 +88,8 @@ export function CameraStream({
 
         streamRef.current = stream
         setHasPermission(true)
-
-        // ── 4. Attach stream to video element immediately ──
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play()
-              .then(() => {
-                if (videoRef.current && !videoReadyCalledRef.current && mounted) {
-                  videoReadyCalledRef.current = true
-                  onVideoReady?.(videoRef.current)
-                }
-              })
-              .catch(err => console.warn('Video play failed:', err))
-          }
-        }
-
         setIsLoading(false)
         onStreamReadyRef?.(stream)
-
       } catch (err) {
         if (!mounted) return
 
@@ -98,9 +100,9 @@ export function CameraStream({
           errorMessage = 'Camera permission denied'
           setHasPermission(false)
         } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-          errorMessage = 'No camera found on this device'
+          errorMessage = 'No camera found'
         } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-          errorMessage = 'Camera is already in use by another app'
+          errorMessage = 'Camera is already in use'
         } else if (error.name === 'OverconstrainedError') {
           errorMessage = 'Camera does not support requested settings'
         }
@@ -113,18 +115,17 @@ export function CameraStream({
 
     startCamera()
 
+    // Cleanup on unmount or facingMode change
     return () => {
       mounted = false
       if (streamRef.current) {
+        console.log('Cleaning up camera stream')
         streamRef.current.getTracks().forEach(track => track.stop())
         streamRef.current = null
       }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null
-      }
       videoReadyCalledRef.current = false
     }
-  }, [facingMode])    // re-run only when facingMode changes
+  }, [facingMode])
 
   if (error) {
     return (
@@ -147,16 +148,14 @@ export function CameraStream({
       <div className="absolute inset-0 flex items-center justify-center w-full h-full bg-zinc-900">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white text-sm">
-            {facingMode === 'environment' ? 'Switching to rear camera...' : 'Requesting camera access...'}
-          </p>
+          <p className="text-white text-sm">Requesting camera access...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="absolute inset-0 w-full h-full">
+    <div className="absolute inset-0 w-full h-full ">
       <video
         ref={videoRef}
         autoPlay

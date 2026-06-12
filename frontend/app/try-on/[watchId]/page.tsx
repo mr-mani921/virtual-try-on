@@ -101,7 +101,6 @@ export default function TryOnPage() {
   const [cameraReady, setCameraReady] = useState(false)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [trackingState, setTrackingState] = useState<'loading' | 'initializing' | 'searching' | 'detected' | 'lost'>('loading')
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
   const handTrackingStartedRef = useRef(false)
 
   // Watch configuration
@@ -151,8 +150,6 @@ export default function TryOnPage() {
   const handleStreamReady = useCallback(() => {
     setCameraReady(true)
     setTrackingState('searching')
-    // Reset tracking so it restarts on the new stream
-    handTrackingStartedRef.current = false
   }, [])
 
   const handleVideoReady = useCallback(
@@ -240,8 +237,6 @@ export default function TryOnPage() {
       <div className="relative w-full h-full pt-[72px]">
         {/* Camera View */}
         <CameraView
-          facingMode={facingMode}
-          onFacingModeChange={setFacingMode}
           onStreamReady={handleStreamReady}
           onVideoReady={handleVideoReady}
           showControls={true}
@@ -329,9 +324,9 @@ export default function TryOnPage() {
           </div>
         )}
 
-        {/* Watch Info Panel - Ticket 35 */}
+        {/* Watch Info Panel - Ticket 35 - Hidden on small screens */}
         {cameraReady && currentWatch && (
-          <div className="absolute bottom-6 left-6 max-w-sm z-20">
+          <div className="absolute bottom-6 left-6 max-w-sm z-20 hidden sm:block">
             <Card>
               <CardBody className="py-4">
                 <div className="flex items-start gap-4">
