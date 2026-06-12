@@ -21,43 +21,15 @@ export function CameraStream({
   const [error, setError] = useState<string | null>(null)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
 
-  // Assign stream to video element when both are ready
-  useEffect(() => {
-    if (streamRef.current && videoRef.current && !isLoading) {
-      videoRef.current.srcObject = streamRef.current
-      
-      console.log('Stream assigned to video element', {
-        streamActive: streamRef.current.active,
-        videoTracks: streamRef.current.getVideoTracks().length,
-        videoTrackEnabled: streamRef.current.getVideoTracks()[0]?.enabled,
-        facingMode,
-      })
-      
-      videoRef.current.onloadedmetadata = () => {
-        console.log('Video metadata loaded')
-        videoRef.current?.play()
-          .then(() => {
-            console.log('Video playing')
-            if (videoRef.current) {
-              onVideoReady?.(videoRef.current)
-            }
-          })
-          .catch(err => console.warn('Video play failed:', err))
-      }
-    }
-  }, [isLoading, facingMode, onVideoReady])
-
   useEffect(() => {
     let mounted = true
-    const onStreamReadyRef = onStreamReady
-    const onErrorRef = onError
 
     const startCamera = async () => {
       try {
         setIsLoading(true)
         setError(null)
 
-        // Stop existing stream if any
+        // Stop and clear existing stream
         if (streamRef.current) {
           console.log('Stopping previous camera stream')
           streamRef.current.getTracks().forEach(track => track.stop())
@@ -74,6 +46,8 @@ export function CameraStream({
 
         if (!mounted) return
 
+        console.log('Requesting camera with facingMode:', facingMode)
+
         // Request camera access
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -89,15 +63,53 @@ export function CameraStream({
           return
         }
 
+        console.log('Camera stream obtained, assigning to video element')
+        
         streamRef.current = stream
         setHasPermission(true)
-        setIsLoading(false)
-        onStreamReadyRef?.(stream)
+
+        // Immediately assign stream to video element
+        if (videoRef.current && mounted) {
+          videoRef.current.srcObject = stream
+
+          videoRef.current.onloadedmetadata = () => {
+            console.log('Video metadata loaded, playing video')
+            videoRef.current?.play()
+              .then(() => {
+                console.log('Video playing successfully')
+                if (mounted) {
+                  setIsLoading(false)
+                  if (videoRef.current) {
+                    onVideoReady?.(videoRef.current)
+                  }
+                  onStreamReady?.(stream)
+                }
+              })
+              .catch(err => {
+                console.error('Video play failed:', err)
+                if (mounted) {
+                  setError('Failed to play video')
+                  setIsLoading(false)
+                }
+              })
+          }
+
+          videoRef.current.onerror = () => {
+            console.error('Video element error')
+            if (mounted) {
+              setError('Video playback error')
+              setIsLoading(false)
+            }
+          }
+        }
+
       } catch (err) {
         if (!mounted) return
 
         const error = err as Error
         let errorMessage = 'Failed to access camera'
+
+        console.error('Camera error:', error.name, error.message)
 
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
           errorMessage = 'Camera permission denied'
@@ -112,7 +124,7 @@ export function CameraStream({
 
         setError(errorMessage)
         setIsLoading(false)
-        onErrorRef?.(new Error(errorMessage))
+        onError?.(new Error(errorMessage))
       }
     }
 
@@ -121,16 +133,18 @@ export function CameraStream({
     // Cleanup on unmount or facingMode change
     return () => {
       mounted = false
+      console.log('Cleaning up camera')
       if (streamRef.current) {
-        console.log('Cleaning up camera stream')
         streamRef.current.getTracks().forEach(track => track.stop())
         streamRef.current = null
       }
       if (videoRef.current) {
         videoRef.current.srcObject = null
+        videoRef.current.onloadedmetadata = null
+        videoRef.current.onerror = null
       }
     }
-  }, [facingMode])
+  }, [facingMode, onStreamReady, onError, onVideoReady])
 
   if (error) {
     return (
@@ -162,7 +176,7 @@ export function CameraStream({
   }
 
   return (
-    <div className="absolute inset-0 w-full h-full ">
+    <div className="absolute inset-0 w-full h-full">
       <video
         ref={videoRef}
         autoPlay
