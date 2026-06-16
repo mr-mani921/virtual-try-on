@@ -143,12 +143,63 @@ Camera Frame → MediaPipe Hands → 21 Landmarks (normalized)
   → One Euro Filter → Quaternion Slerp Smoothing → Watch Position
 ```
 
-#### 2. Coordinate System
+#### 2. Coordinate System (V2)
 
-The wrist coordinate frame:
-- **+X** - Lateral (index knuckle → pinky knuckle)
-- **+Y** - Into palm (wrist depth axis)
-- **+Z** - Along forearm (wrist → fingers)
+**Wrist Coordinate System V2** - Anatomically-accurate, stable 3D coordinate frame aligned to the wrist.
+
+**Landmarks Used:**
+- Wrist (MediaPipe landmark 0) - origin
+- Index MCP (landmark 5) - lateral reference
+- **Middle MCP (landmark 9)** - forearm direction reference (NEW in V2)
+- Pinky MCP (landmark 17) - lateral reference
+
+**Coordinate Frame:**
+- **+Z Axis (Forearm):** Wrist → Middle MCP (forearm/finger direction)
+- **+X Axis (Lateral):** Index MCP → Pinky MCP (hand width direction)
+- **+Y Axis (Perpendicular):** Cross(Z, X) (right-handed, points into palm)
+
+**Why V2?**
+
+V1 used a computed palm midpoint from Index+Pinky MCPs: `midpoint = (Index + Pinky) / 2`. V2 directly uses the **Middle MCP landmark** instead because:
+- Middle finger is anatomically central and most stable
+- Single landmark measurement (no midpoint computation noise)
+- Avoids error propagation from averaging two landmarks
+- Less affected by finger spreading/curling
+- More consistent during wrist rotation
+- Same axis meanings as V1 = existing watch configurations work unchanged
+
+**Implementation:**
+```typescript
+import { computeWristQuaternionV2 } from '@/lib/three/coordinateMapping'
+
+// V2 returns a quaternion (avoids gimbal lock)
+const orientation = computeWristQuaternionV2(
+  wristPos,      // Wrist landmark
+  indexPos,      // Index MCP
+  middlePos,     // Middle MCP (NEW in V2 - replaces midpoint)
+  pinkyPos       // Pinky MCP
+)
+```
+
+**Algorithm:**
+1. Compute Z axis: `normalize(middleMCP - wrist)` - forearm direction (V2 uses single landmark)
+2. Compute X axis: `normalize(pinkyMCP - indexMCP)` - stable lateral direction
+3. Compute Y axis: `normalize(cross(Z, X))` - right-handed perpendicular
+4. **Gram-Schmidt Re-orthogonalization (2 passes):** Removes landmark noise, ensures perfect 90° angles
+5. Build rotation matrix from orthonormal basis
+6. Extract quaternion (no gimbal lock, smooth interpolation)
+
+**V1 vs V2:**
+- V1: Z = wrist → palm midpoint where `midpoint = (Index + Pinky) / 2`
+- V2: Z = wrist → middle MCP (direct measurement)
+- Result: Same coordinate frame meanings, more stable Z axis, less noise
+
+The system automatically uses V2 by default. To use V1 for comparison:
+```typescript
+const mappedData = useCoordinateMapping(handDetection, camera, {
+  useV2CoordinateSystem: false, // Explicitly use V1 (legacy)
+})
+```
 
 #### 3. Rendering Pipeline
 

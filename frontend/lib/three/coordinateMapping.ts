@@ -244,6 +244,132 @@ export function computeWristAxes(
  */
 export const calculateWristQuaternion = computeWristQuaternion
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WRIST COORDINATE SYSTEM V2
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// V2 IMPROVEMENTS:
+// 1. Uses Middle MCP landmark instead of computed palm midpoint
+// 2. Middle finger is anatomically central and most stable
+// 3. Reduces noise from midpoint computation (Index+Pinky)/2
+// 4. Less affected by individual finger spreading/curling
+// 5. More consistent during wrist rotation and palm-up/back-hand transitions
+//
+// COORDINATE FRAME V2 (same axis meanings as V1):
+//   +Z  wrist → middle MCP     (forearm / finger direction)
+//   +X  index MCP → pinky MCP  (hand width / lateral)
+//   +Y  cross(Z, X)            (right-handed — points into the palm)
+//
+// V1 vs V2 DIFFERENCE:
+//   V1: Z = wrist → palm midpoint, where midpoint = (Index+Pinky)/2
+//   V2: Z = wrist → middle MCP (direct single landmark)
+//
+// WHY V2 IS MORE STABLE:
+// - Middle MCP is single landmark (no midpoint computation noise)
+// - Middle finger is anatomically central (most stable reference)
+// - Direct measurement avoids error propagation from averaging
+// - Less sensitivity to individual finger movements
+// - Same axis meanings as V1 = same rotation offsets work
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute wrist quaternion using V2 coordinate system with Middle MCP landmark.
+ *
+ * V2 uses Middle MCP instead of palm midpoint, providing:
+ * - More stable Z axis (forearm direction)
+ * - Reduced computation noise
+ * - Less sensitivity to finger spreading/curling
+ * - Better stability during wrist rotation
+ *
+ * @param wrist        Wrist landmark (origin)
+ * @param indexBase    Index MCP landmark (lateral reference)
+ * @param middleBase   Middle MCP landmark (forearm direction reference) - NEW in V2
+ * @param pinkyBase    Pinky MCP landmark (lateral reference)
+ * @returns            Quaternion representing wrist orientation
+ */
+export function computeWristQuaternionV2(
+  wrist: WorldCoordinates,
+  indexBase: WorldCoordinates,
+  middleBase: WorldCoordinates,
+  pinkyBase: WorldCoordinates
+): THREE.Quaternion {
+  const wristVec = new THREE.Vector3(wrist.x, wrist.y, wrist.z)
+  const indexVec = new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z)
+  const middleVec = new THREE.Vector3(middleBase.x, middleBase.y, middleBase.z)
+  const pinkyVec = new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z)
+
+  // Z — forward / forearm direction (wrist toward middle MCP)
+  // NEW in V2: Uses middle MCP instead of palm midpoint for stability
+  // Middle finger is anatomically central and most stable
+  const Z = new THREE.Vector3().subVectors(middleVec, wristVec).normalize()
+
+  // X — hand width direction (index MCP toward pinky MCP)
+  // Same as V1, this is the most stable lateral axis
+  const X = new THREE.Vector3().subVectors(pinkyVec, indexVec).normalize()
+
+  // Y — right-handed perpendicular: cross(Z, X)
+  // Points into the palm (perpendicular to both Z and X)
+  const Y = new THREE.Vector3().crossVectors(Z, X).normalize()
+
+  // Re-orthogonalize to purge residual non-orthogonality from landmark noise.
+  // Pass 1: correct X from the now-stable Y and Z.
+  X.crossVectors(Y, Z).normalize()
+  
+  // Pass 2: correct Z from the corrected X and Y.
+  Z.crossVectors(X, Y).normalize()
+
+  // Build rotation matrix — makeBasis columns are the world directions for
+  // local +X, +Y, +Z respectively — then extract quaternion.
+  const matrix = new THREE.Matrix4().makeBasis(X, Y, Z)
+  return new THREE.Quaternion().setFromRotationMatrix(matrix)
+}
+
+/**
+ * Compute wrist axes using V2 coordinate system with Middle MCP landmark.
+ *
+ * Returns raw axis vectors and origin for debug visualization or downstream
+ * consumers that need explicit axis directions.
+ *
+ * @param wrist        Wrist landmark (origin)
+ * @param indexBase    Index MCP landmark (lateral reference)
+ * @param middleBase   Middle MCP landmark (perpendicular/dorsal reference) - NEW in V2
+ * @param pinkyBase    Pinky MCP landmark (lateral reference)
+ * @returns            WristAxes with orthogonal X, Y, Z axes and palm normal
+ */
+export function computeWristAxesV2(
+  wrist: WorldCoordinates,
+  indexBase: WorldCoordinates,
+  middleBase: WorldCoordinates,
+  pinkyBase: WorldCoordinates
+): WristAxes {
+  const wristVec = new THREE.Vector3(wrist.x, wrist.y, wrist.z)
+  const indexVec = new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z)
+  const middleVec = new THREE.Vector3(middleBase.x, middleBase.y, middleBase.z)
+  const pinkyVec = new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z)
+
+  // Build V2 coordinate frame (same as V1 but using Middle MCP instead of midpoint)
+  const Z = new THREE.Vector3().subVectors(middleVec, wristVec).normalize()
+  const X = new THREE.Vector3().subVectors(pinkyVec, indexVec).normalize()
+  const Y = new THREE.Vector3().crossVectors(Z, X).normalize()
+  X.crossVectors(Y, Z).normalize()
+  Z.crossVectors(X, Y).normalize()
+
+  // Direct palm normal: same computation as V1 for compatibility
+  // Direct geometric measurement from wrist + index + pinky
+  const v1 = new THREE.Vector3().subVectors(indexVec, wristVec)
+  const v2 = new THREE.Vector3().subVectors(pinkyVec, wristVec)
+  const palmNormal = new THREE.Vector3().crossVectors(v1, v2).normalize()
+
+  return {
+    xAxis: X,
+    yAxis: Y,
+    zAxis: Z,
+    palmNormal,
+    origin: wristVec.clone(),
+  }
+}
+
 /**
  * Smooth coordinate transitions using linear interpolation
  */
