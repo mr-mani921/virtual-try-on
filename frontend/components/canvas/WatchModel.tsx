@@ -44,6 +44,18 @@ interface WatchModelProps {
    * When provided, uses config values as base, allowing prop overrides
    */
   watchConfig?: WatchConfiguration
+  /**
+   * EXPERIMENT: Enable/disable adaptive lerp smoothing layer
+   * true = One Euro Filter + Adaptive Lerp (current behavior)
+   * false = One Euro Filter only
+   * Default: true
+   */
+  useAdaptiveLerp?: boolean
+  /**
+   * EXPERIMENT: Callback for debug metrics (position variance, velocity, alpha)
+   * Called every frame with smoothing metrics
+   */
+  onDebugMetrics?: (metrics: any) => void
 }
 
 export function WatchModel({
@@ -61,6 +73,8 @@ export function WatchModel({
   showDebugAxis = false,
   modelPath,
   watchConfig,
+  useAdaptiveLerp = true,
+  onDebugMetrics,
 }: WatchModelProps) {
   // Use watchConfig values as base, allow prop overrides for backward compatibility
   const effectiveScale = scale ?? watchConfig?.scale ?? 1
@@ -74,6 +88,8 @@ export function WatchModel({
 
   // Per-frame state lives in refs — never in React state — to avoid 60fps re-renders.
   const currentPosRef = useRef<WorldCoordinates | null>(null)
+  const previousTargetPosRef = useRef<WorldCoordinates | null>(null)
+  const previousFinalPosRef = useRef<WorldCoordinates | null>(null)
 
   // ── Calibration helpers (pre-allocated, zero GC in the render loop) ─────────
   // wristTransformVec mirrors wristPosition as a THREE.Vector3 so it can be
@@ -232,21 +248,67 @@ export function WatchModel({
       z: targetPosVec.current.z,
     }
 
-    // ── Step 3: One Euro filter + velocity-adaptive lerp ─────────────────────
+    // ── Step 3: Record INPUT variance for reference (raw target jitter) ───────
+    // This measures MediaPipe + coordinate transformation noise BEFORE smoothing
+    if (previousTargetPosRef.current) {
+      const dx = targetPos.x - previousTargetPosRef.current.x
+      const dy = targetPos.y - previousTargetPosRef.current.y
+      const dz = targetPos.z - previousTargetPosRef.current.z
+      const inputVariance = Math.sqrt(dx * dx + dy * dy + dz * dz)
+      // Store for metrics but don't use for primary measurement
+      ;(targetPos as any)._inputVariance = inputVariance
+    }
+    previousTargetPosRef.current = targetPos
+
+    // ── Step 4: One Euro filter ───────────────────────────────────────────────
     const filteredPos = stabilizer.current.filterPosition(targetPos, timestamp)
 
-    if (currentPosRef.current) {
+    // ── Step 5: Optional velocity-adaptive lerp (experiment toggle) ───────────
+    let finalPos: WorldCoordinates
+    
+    if (useAdaptiveLerp && currentPosRef.current) {
+      // EXPERIMENT: Two-layer smoothing (One Euro + Adaptive Lerp)
       const adaptiveAlpha = stabilizer.current.getAdaptiveAlpha(filteredPos, timestamp)
       const effectiveSmoothing = Math.max(effectiveSmoothingValue, adaptiveAlpha)
-      const smoothed = lerpWorldCoordinates(currentPosRef.current, filteredPos, effectiveSmoothing)
-      groupRef.current.position.set(smoothed.x, smoothed.y, smoothed.z)
-      currentPosRef.current = smoothed
+      finalPos = lerpWorldCoordinates(currentPosRef.current, filteredPos, effectiveSmoothing)
+    } else if (currentPosRef.current) {
+      // EXPERIMENT: One Euro Filter only
+      // Apply simple lerp with fixed smoothing factor (no velocity adaptation)
+      finalPos = lerpWorldCoordinates(currentPosRef.current, filteredPos, effectiveSmoothingValue)
     } else {
-      groupRef.current.position.set(filteredPos.x, filteredPos.y, filteredPos.z)
-      currentPosRef.current = { ...filteredPos }
+      // First frame: snap immediately
+      finalPos = filteredPos
     }
 
-    // ── Step 4: compute calibrated target rotation ────────────────────────────
+    groupRef.current.position.set(finalPos.x, finalPos.y, finalPos.z)
+    
+    // ── Step 6: Record OUTPUT variance (final smoothed position jitter) ───────
+    // CRITICAL: This measures smoothing effectiveness, not input noise
+    stabilizer.current.recordPositionVariance(finalPos, previousFinalPosRef.current)
+    previousFinalPosRef.current = finalPos
+    currentPosRef.current = finalPos
+
+    // ── Step 7: Export debug metrics ──────────────────────────────────────────
+    if (onDebugMetrics) {
+      const metrics = stabilizer.current.getDebugMetrics()
+      if (metrics) {
+        onDebugMetrics({
+          ...metrics,
+          config: {
+            useAdaptiveLerp,
+            smoothingFactor: effectiveSmoothingValue,
+          },
+          positions: {
+            target: targetPos,
+            filtered: filteredPos,
+            final: finalPos,
+            inputVariance: (targetPos as any)._inputVariance || 0,
+          },
+        })
+      }
+    }
+
+    // ── Step 8: compute calibrated target rotation ────────────────────────────
     if (handOrientation) {
       computeTargetRotation(
         wristTransform,
@@ -256,7 +318,7 @@ export function WatchModel({
         targetQuatRef.current,
       )
 
-      // ── Step 5: quaternion slerp with dot-product sign correction ──────────
+      // ── Step 9: quaternion slerp with dot-product sign correction ──────────
       const smoothedQuat = quatSmoother.current.update(targetQuatRef.current, effectiveSmoothingValue)
       groupRef.current.quaternion.copy(smoothedQuat)
     }

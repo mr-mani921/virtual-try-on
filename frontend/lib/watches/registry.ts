@@ -38,7 +38,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     brand: 'ActiveTime',
     category: 'sports',
     thumbnail: 'https://png.pngtree.com/png-clipart/20250501/original/pngtree-a-black-and-gold-rolex-watch-png-image_20925413.png',
-    modelUrl: '/models/watch.glb', // Will use same model for now
+    modelUrl: '/models/watch.glb',
     scale: 1.8,
     rotationOffset: { x: Math.PI / 2, y: 0, z: 0 },
     positionOffset: { x: 0, y: 0.02, z: 0 },
@@ -378,5 +378,3 @@ export function getWatchesByBrand(brand: string): WatchConfiguration[] {
 export function getWatchIds(): string[] {
   return Object.keys(WATCH_REGISTRY)
 }
-
-

@@ -279,6 +279,12 @@ export class MotionStabilizer {
   private rotationFilter: OneEuroFilterQuaternion
   private velocityAdapter: VelocityAdaptiveSmoothing
 
+  // Debug metrics
+  private positionVarianceHistory: number[] = []
+  private velocityHistory: number[] = []
+  private alphaHistory: number[] = []
+  private readonly historySize = 60 // 1 second at 60 FPS
+
   constructor() {
     // Tuned parameters for watch AR tracking
     this.positionFilter = new OneEuroFilter3D(1.5, 0.01)
@@ -295,12 +301,89 @@ export class MotionStabilizer {
   }
 
   getAdaptiveAlpha(position: WorldCoordinates, timestamp?: number): number {
-    return this.velocityAdapter.getAdaptiveAlpha(position, timestamp)
+    const alpha = this.velocityAdapter.getAdaptiveAlpha(position, timestamp)
+    
+    // Track alpha for metrics
+    this.alphaHistory.push(alpha)
+    if (this.alphaHistory.length > this.historySize) {
+      this.alphaHistory.shift()
+    }
+    
+    return alpha
+  }
+
+  /**
+   * Record position variance for debugging
+   * Call this with raw target position to measure jitter
+   */
+  recordPositionVariance(position: WorldCoordinates, previousPosition: WorldCoordinates | null): void {
+    if (!previousPosition) return
+
+    const dx = position.x - previousPosition.x
+    const dy = position.y - previousPosition.y
+    const dz = position.z - previousPosition.z
+    const variance = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    this.positionVarianceHistory.push(variance)
+    if (this.positionVarianceHistory.length > this.historySize) {
+      this.positionVarianceHistory.shift()
+    }
+
+    // Track velocity for correlation analysis
+    this.velocityHistory.push(this.velocityAdapter['velocity'] || 0)
+    if (this.velocityHistory.length > this.historySize) {
+      this.velocityHistory.shift()
+    }
+  }
+
+  /**
+   * Get debug metrics for position smoothing analysis
+   */
+  getDebugMetrics() {
+    if (this.positionVarianceHistory.length === 0) {
+      return null
+    }
+
+    const variance = this.positionVarianceHistory
+    const velocity = this.velocityHistory
+    const alpha = this.alphaHistory
+
+    return {
+      position: {
+        currentVariance: variance[variance.length - 1] || 0,
+        avgVariance: variance.reduce((a, b) => a + b, 0) / variance.length,
+        maxVariance: Math.max(...variance),
+        minVariance: Math.min(...variance),
+        stdDev: this.calculateStdDev(variance),
+      },
+      velocity: {
+        current: velocity[velocity.length - 1] || 0,
+        avg: velocity.reduce((a, b) => a + b, 0) / velocity.length,
+        max: Math.max(...velocity),
+      },
+      alpha: {
+        current: alpha[alpha.length - 1] || 0,
+        avg: alpha.reduce((a, b) => a + b, 0) / alpha.length,
+        min: Math.min(...alpha),
+        max: Math.max(...alpha),
+      },
+      sampleCount: variance.length,
+    }
+  }
+
+  private calculateStdDev(values: number[]): number {
+    const avg = values.reduce((a, b) => a + b, 0) / values.length
+    const squareDiffs = values.map(value => Math.pow(value - avg, 2))
+    const avgSquareDiff = squareDiffs.reduce((a, b) => a + b, 0) / squareDiffs.length
+    return Math.sqrt(avgSquareDiff)
   }
 
   reset() {
     this.positionFilter.reset()
     this.rotationFilter.reset()
     this.velocityAdapter.reset()
+    this.positionVarianceHistory = []
+    this.velocityHistory = []
+    this.alphaHistory = []
   }
 }

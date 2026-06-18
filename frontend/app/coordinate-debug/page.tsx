@@ -16,6 +16,7 @@ import { WatchModel } from '@/components/canvas/WatchModel'
 import { WristOccluder } from '@/components/canvas/WristOccluder'
 import { ModelInspector } from '@/components/canvas/ModelInspector'
 import { WatchControls } from '@/components/ui/WatchControls'
+import { SmoothingDebugPanel } from '@/components/ui/SmoothingDebugPanel'
 import { Environment } from '@/components/canvas/Environment'
 import Link from 'next/link'
 
@@ -27,7 +28,9 @@ function CoordinateDebugScene({
   watchConfig,
   handedness,
   useDynamicScaling,
-  dynamicScale
+  dynamicScale,
+  useAdaptiveLerp,
+  onDebugMetrics
 }: { 
   showVisualizer: boolean
   showWristAnchor: boolean
@@ -37,6 +40,8 @@ function CoordinateDebugScene({
   handedness: 'Left' | 'Right'
   useDynamicScaling: boolean
   dynamicScale: number
+  useAdaptiveLerp: boolean
+  onDebugMetrics?: (metrics: any) => void
 }) {
   const { camera } = useThree()
   const [handDetection, setHandDetection] = useState<any>(null)
@@ -124,6 +129,8 @@ function CoordinateDebugScene({
             wristFitBias={watchConfig.wristFitBias}
             palmNormal={mappedData.palmNormal}
             showDebugAxis={showDebugAxis}
+            useAdaptiveLerp={useAdaptiveLerp}
+            onDebugMetrics={onDebugMetrics}
           />
         </>
       )}
@@ -150,6 +157,8 @@ export default function CoordinateDebugPage() {
   const [showCoordinates, setShowCoordinates] = useState(true)
   const [showWatchControls, setShowWatchControls] = useState(true)
   const [useDynamicScaling, setUseDynamicScaling] = useState(true)
+  const [useAdaptiveLerp, setUseAdaptiveLerp] = useState(true)
+  const [smoothingMetrics, setSmoothingMetrics] = useState<any>(null)
   const handTrackingStartedRef = useRef(false)
 
   // Watch configuration hook
@@ -396,6 +405,8 @@ export default function CoordinateDebugPage() {
               handedness={handDetection?.handedness || 'Right'}
               useDynamicScaling={useDynamicScaling}
               dynamicScale={dynamicScale}
+              useAdaptiveLerp={useAdaptiveLerp}
+              onDebugMetrics={setSmoothingMetrics}
             />
           </Canvas>
           
@@ -622,6 +633,15 @@ export default function CoordinateDebugPage() {
           </CardBody>
         </Card>
       </div>
+
+      {/* Smoothing Debug Panel */}
+      {showWatchModel && (
+        <SmoothingDebugPanel
+          metrics={smoothingMetrics}
+          onToggleAdaptiveLerp={setUseAdaptiveLerp}
+          useAdaptiveLerp={useAdaptiveLerp}
+        />
+      )}
     </div>
   )
 }

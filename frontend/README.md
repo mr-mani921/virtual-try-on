@@ -69,10 +69,41 @@ The root page (`/`) is the landing page. The original AR test is at `/demo`.
 
 ### Debug Pages
 
-- `/coordinate-debug` - Split-view visualization of tracking and 3D mapping
+- `/coordinate-debug` - Split-view visualization of tracking and 3D mapping with **Position Smoothing Experiment Panel**
 - `/3d-demo` - React Three Fiber interactive demo
 - `/camera-test` - Camera integration testing
 - `/demo` - Full AR experience (original test page)
+
+### Position Smoothing Experiment (Ticket 41b)
+
+The `/coordinate-debug` page now includes a **Smoothing Debug Panel** for comparing position stabilization strategies:
+
+**Features:**
+- Toggle between **One Euro Filter only** vs **One Euro + Adaptive Lerp**
+- Real-time variance metrics (current, average, std dev, max)
+- Velocity and adaptive alpha tracking
+- Recording sessions with data export
+- Automatic comparison between smoothing strategies
+
+**How to use:**
+1. Navigate to `/coordinate-debug`
+2. Show your hand to start tracking
+3. Use the **Smoothing Debug Panel** (top-right) to:
+   - Toggle smoothing modes
+   - Start/stop recording sessions
+   - Compare recorded data
+   - Export results as JSON
+
+**Metrics Explained:**
+- **Position Variance**: Frame-to-frame position change (mm)
+- **Velocity**: Speed of hand movement (units/second)
+- **Adaptive Alpha**: Smoothing factor (0.15-0.6, higher = more responsive)
+- **Std Dev**: Consistency of jitter over time
+
+**Expected Results:**
+- One Euro Only should have **lower variance** (less jitter)
+- Adaptive Lerp adds responsiveness but may increase jitter
+- Record 10-15 second sessions for accurate comparison
 
 ### Watch Configuration
 
