@@ -50,7 +50,9 @@ function ARScene({
             handOrientation={mappedData.handOrientation}
             indexBasePosition={mappedData.indexBasePosition}
             pinkyBasePosition={mappedData.pinkyBasePosition}
+            palmNormal={mappedData.palmNormal}
             occluderOffset={watchConfig.occluderOffset}
+            frontFaceDepthBias={watchConfig.frontFaceDepthBias}
             smoothing={watchConfig.smoothing}
           />
           <WatchModel

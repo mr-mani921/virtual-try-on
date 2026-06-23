@@ -81,6 +81,22 @@ export interface WatchConfiguration {
    */
   occluderOffset?: { x: number; y: number; z: number }
   
+  /**
+   * TICKET 43b: Per-watch occluder front face depth bias
+   * Fine-tunes how much the occluder front face protrudes toward camera
+   * 
+   * Use cases:
+   * - Positive values: Front face retreats toward palm (bulky/thick watches)
+   * - Negative values: Front face extends toward camera (slim/flat watches)
+   * - Zero: Front face at wrist center (standard)
+   * 
+   * Applied independently of occluderOffset.y for precise depth control
+   * 
+   * Range: -0.01 (extend) to 0.01 (retreat)
+   * Default: 0
+   */
+  frontFaceDepthBias?: number
+  
   // ═══════════════════════════════════════════════════════════════════════
   // MOTION SMOOTHING PARAMETERS
   // ═══════════════════════════════════════════════════════════════════════

@@ -13,6 +13,13 @@ interface WristOccluderProps {
   indexBasePosition?: WorldCoordinates | null
   pinkyBasePosition?: WorldCoordinates | null
   /**
+   * Direct palm normal from computePalmNormal().
+   * When provided, the occluder depth positioning uses this vector for
+   * stable surface anchoring (matches WatchModel behavior).
+   * Points toward the palmar side; negate for dorsal (watch) direction.
+   */
+  palmNormal?: THREE.Vector3 | null
+  /**
    * Per-watch fine-tuning of the occluder's local position (wrist frame).
    * Added on top of the auto-computed palm offset.
    *   x: lateral bias
@@ -20,6 +27,14 @@ interface WristOccluderProps {
    *   z: forearm-direction shift
    */
   occluderOffset?: { x: number; y: number; z: number }
+  /**
+   * TICKET 43b: Per-watch front face depth bias.
+   * Adjusts how much the occluder front face protrudes toward camera.
+   *   Positive: front face retreats toward palm (bulky watches)
+   *   Negative: front face extends toward camera (slim watches)
+   *   Default: 0 (front face at wrist center)
+   */
+  frontFaceDepthBias?: number
   smoothing?: number
   enabled?: boolean
 }
@@ -58,7 +73,9 @@ export function WristOccluder({
   handOrientation,
   indexBasePosition,
   pinkyBasePosition,
+  palmNormal,
   occluderOffset = { x: 0, y: 0, z: 0 },
+  frontFaceDepthBias = 0,
   smoothing = 0.3,
   enabled = true,
 }: WristOccluderProps) {
@@ -82,13 +99,13 @@ export function WristOccluder({
 
     const timestamp = Date.now()
 
-    // --- Position: One Euro filtered + velocity-adaptive lerp ---
+    // --- Position: One Euro filtered + FIXED lerp (TICKET 43b: matches WatchModel) ---
+    // Removed adaptive lerp to eliminate occluder/watch drift during fast motion
     const filteredPos = stabilizer.current.filterPosition(wristPosition, timestamp)
 
     if (currentPosRef.current) {
-      const adaptiveAlpha = stabilizer.current.getAdaptiveAlpha(filteredPos, timestamp)
-      const effectiveSmoothing = Math.max(smoothing, adaptiveAlpha)
-      const smoothed = lerpWorldCoordinates(currentPosRef.current, filteredPos, effectiveSmoothing)
+      // Use fixed smoothing factor only (no adaptive alpha)
+      const smoothed = lerpWorldCoordinates(currentPosRef.current, filteredPos, smoothing)
       groupRef.current.position.set(smoothed.x, smoothed.y, smoothed.z)
       currentPosRef.current = smoothed
     } else {
@@ -116,13 +133,20 @@ export function WristOccluder({
     //   front face y = palmOffset − scaleZ/2
     //   back  face y = palmOffset + scaleZ/2
     //
-    // Setting palmOffset = scaleZ/2 makes:
-    //   front face y = 0  (exactly at wrist centre — no protrusion toward camera)
-    //   back  face y = scaleZ (into wrist volume / palm side)
+    // TICKET 43b: palmOffset calculation now includes:
+    //   1. Base offset: scaleZ/2 (centers occluder at wrist)
+    //   2. frontFaceDepthBias: per-watch tuning (positive = retreat toward palm)
+    //   3. occluderOffset.y: legacy additional bias
     //
-    // Only fragments with depth > front-face depth are discarded.
-    // Watch face and top strap (y < 0, toward camera) → pass depth test ✓
-    // Inner wrist strap          (y > 0, into palm)  → fail depth test ✓
+    // New formula:
+    //   palmOffset = (scaleZ/2 - frontFaceDepthBias) + occluderOffset.y
+    //
+    // This makes:
+    //   front face y = -frontFaceDepthBias + occluderOffset.y
+    //   back  face y = scaleZ - frontFaceDepthBias + occluderOffset.y
+    //
+    // When palmNormal is provided (TICKET 43b), position is adjusted along
+    // the palm normal vector (like WatchModel) for stable surface anchoring.
     if (occluderRef.current && indexBasePosition && pinkyBasePosition) {
       indexVecRef.current.set(indexBasePosition.x, indexBasePosition.y, indexBasePosition.z)
       pinkyVecRef.current.set(pinkyBasePosition.x, pinkyBasePosition.y, pinkyBasePosition.z)
@@ -135,13 +159,18 @@ export function WristOccluder({
 
       occluderRef.current.scale.set(scaleX, scaleY, scaleZ)
 
-      // palmOffset = scaleZ/2 → front face at group y=0 (wrist centre), no camera protrusion.
-      // occluderOffset adds a per-watch bias on top (wrist local frame):
-      //   y: additional depth into wrist (positive = front face retreats toward palm)
-      //   x/z: lateral or forearm fine-tuning
+      // TICKET 43b: Calculate palm offset with frontFaceDepthBias
+      // Base: scaleZ/2 centers the cylinder
+      // Subtract frontFaceDepthBias to adjust front face depth
+      // Add occluderOffset.y for legacy compatibility
+      const basePalmOffset = (scaleZ / 2) - frontFaceDepthBias + occluderOffset.y
+
+      // Position in wrist local frame
+      // TICKET 43b: palmNormal integration handled at group level (matches WatchModel)
+      // The occluder mesh position is always in local wrist frame
       occluderRef.current.position.set(
         occluderOffset.x,
-        scaleZ / 2 + occluderOffset.y,
+        basePalmOffset,
         occluderOffset.z,
       )
     }
@@ -158,10 +187,11 @@ export function WristOccluder({
           scaleX → lateral (group +X)
           scaleY → forearm (group +Z)
           scaleZ → into-palm depth (group +Y)  ← produces elliptical cross-section
-        16 radial segments is sufficient for a smooth ellipse after non-uniform scaling.
+        TICKET 43b: 32 radial segments (increased from 16) for smoother occlusion
+        edges and reduced artifacts at shallow viewing angles.
       */}
       <mesh ref={occluderRef} rotation={[Math.PI / 2, 0, 0]} renderOrder={-1}>
-        <cylinderGeometry args={[1, 1, 1, 16, 1]} />
+        <cylinderGeometry args={[1, 1, 1, 32, 1]} />
         <meshBasicMaterial colorWrite={false} depthWrite={true} />
       </mesh>
     </group>

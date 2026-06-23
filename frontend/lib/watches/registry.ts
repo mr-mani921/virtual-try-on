@@ -21,6 +21,8 @@ export const DEFAULT_WATCH_CONFIG: WatchConfiguration = {
   positionOffset: { x: 0, y: 0, z: 0 },
   wristFitBias: 0,
   occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
+  frontFaceDepthBias: 0,
   smoothing: 0.3,
   rotationSmoothing: 0.6,
   description: 'Classic timepiece with elegant design',
@@ -46,6 +48,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.02, z: 0 },
     wristFitBias: 0.015, // Bulkier sports watch sits deeper
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Rugged sports watch built for performance',
@@ -64,6 +67,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: -0.01, z: 0 },
     wristFitBias: -0.005, // Slim luxury watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.4,
     rotationSmoothing: 0.6,
     description: 'Sophisticated luxury timepiece with premium finish',
@@ -82,6 +86,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0, z: 0 },
     wristFitBias: 0, // Standard fit
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Versatile casual watch for everyday wear',
@@ -100,6 +105,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.01, z: 0 },
     wristFitBias: 0.008, // Thicker smart watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Smart watch with advanced fitness tracking',
@@ -118,6 +124,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.015, z: 0 },
     wristFitBias: 0.012, // Bulkier sports watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Lightweight running watch with GPS',
@@ -136,6 +143,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: -0.005, z: 0 },
     wristFitBias: -0.005, // Slim luxury watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.4,
     rotationSmoothing: 0.6,
     description: 'Exquisite chronograph with Swiss movement',
@@ -154,6 +162,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.005, z: 0 },
     wristFitBias: 0, // Standard fit
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Relaxed style for weekend adventures',
@@ -172,6 +181,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.012, z: 0 },
     wristFitBias: 0.008, // Thicker smart watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Advanced health monitoring smartwatch',
@@ -190,6 +200,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.018, z: 0 },
     wristFitBias: 0.012, // Bulkier sports watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Professional diving watch, water resistant to 300m',
@@ -208,6 +219,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: -0.008, z: 0 },
     wristFitBias: -0.005, // Slim luxury watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.4,
     rotationSmoothing: 0.6,
     description: 'Limited edition gold-plated masterpiece',
@@ -226,6 +238,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: -0.002, z: 0 },
     wristFitBias: 0, // Standard fit
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Clean minimalist design for the modern professional',
@@ -244,6 +257,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.008, z: 0 },
     wristFitBias: 0.008, // Thicker smart watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Complete fitness tracking with heart rate monitor',
@@ -262,6 +276,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.016, z: 0 },
     wristFitBias: 0.012, // Bulkier sports watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Outdoor adventure watch with altitude tracker',
@@ -280,6 +295,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: -0.012, z: 0 },
     wristFitBias: -0.005, // Slim luxury watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.4,
     rotationSmoothing: 0.6,
     description: 'Diamond-studded luxury watch for special occasions',
@@ -298,6 +314,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.003, z: 0 },
     wristFitBias: 0, // Standard fit
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Vintage-inspired design with modern reliability',
@@ -316,6 +333,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.006, z: 0 },
     wristFitBias: 0.008, // Thicker smart watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Professional smartwatch with business features',
@@ -334,6 +352,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.014, z: 0 },
     wristFitBias: 0.012, // Bulkier sports watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Long-distance running companion with stamina tracking',
@@ -352,6 +371,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: -0.006, z: 0 },
     wristFitBias: -0.005, // Slim luxury watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.4,
     rotationSmoothing: 0.6,
     description: 'Heirloom-quality platinum timepiece',
@@ -370,6 +390,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.004, z: 0 },
     wristFitBias: 0, // Standard fit
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Comfortable canvas strap for all-day wear',
@@ -388,6 +409,7 @@ export const WATCH_REGISTRY: WatchRegistry = {
     positionOffset: { x: 0, y: 0.01, z: 0 },
     wristFitBias: 0.008, // Thicker smart watch
     occluderOffset: { x: 0, y: 0, z: 0 },
+    frontFaceDepthBias: 0,
     smoothing: 0.3,
     rotationSmoothing: 0.6,
     description: 'Gamer-focused smartwatch with performance stats',

@@ -246,6 +246,10 @@ export function WatchModel({
                 physicalMat.ior = 1.5
                 physicalMat.clearcoat = 1.0
                 physicalMat.clearcoatRoughness = 0.1
+                // TICKET 43b: Force depth write for correct occlusion
+                mat.depthWrite = true
+                // TICKET 43b: Ensure glass renders after watch body but still depth-tested
+                child.renderOrder = 2
               } else if (isMetal) {
                 // Metallic enhancement
                 const physicalMat = mat as any
@@ -518,7 +522,7 @@ export function WatchModel({
   if (!wristPosition) return null
 
   return (
-    <group ref={groupRef}>
+    <group ref={groupRef} renderOrder={1}>
       <group ref={modelRef} />
 
       {showDebugAxis && (
