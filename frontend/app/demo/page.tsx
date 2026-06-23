@@ -74,6 +74,7 @@ function ARScene({
             handOrientation={mappedData.handOrientation}
             handedness={handedness}
             smoothing={watchConfig.smoothing}
+            rotationSmoothing={0.6}
             scale={watchConfig.scale}
             dynamicScale={dynamicScale}
             useDynamicScaling={useDynamicScaling}
@@ -82,6 +83,7 @@ function ARScene({
             wristFitBias={watchConfig.wristFitBias}
             palmNormal={mappedData.palmNormal}
             showDebugAxis={false}
+            useAdaptiveLerp={false}
             watchConfig={currentWatch}
           />
         </>

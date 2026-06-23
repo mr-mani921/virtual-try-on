@@ -19,6 +19,13 @@ interface WatchModelProps {
   handOrientation?: THREE.Quaternion | null
   handedness?: 'Left' | 'Right'
   smoothing?: number
+  /**
+   * TICKET 41d: Separate rotation smoothing factor (slerp alpha)
+   * Independent from position smoothing to prevent rotation compression
+   * Range: 0.3 (heavy smoothing) to 0.85 (light smoothing)
+   * Default: 0.6 (preserves full rotation range while reducing jitter)
+   */
+  rotationSmoothing?: number
   scale?: number
   dynamicScale?: number
   useDynamicScaling?: boolean
@@ -56,6 +63,42 @@ interface WatchModelProps {
    * Called every frame with smoothing metrics
    */
   onDebugMetrics?: (metrics: any) => void
+  /**
+   * VALIDATION: Callback for rotation debug data (quaternions, Euler angles)
+   * Called every frame with raw and smoothed rotation values
+   */
+  onRotationDebug?: (data: {
+    rawQuaternion: { x: number; y: number; z: number; w: number }
+    smoothedQuaternion: { x: number; y: number; z: number; w: number }
+    rawEuler: { x: number; y: number; z: number }
+    smoothedEuler: { x: number; y: number; z: number }
+    bypassMode: boolean
+    ranges: {
+      raw: {
+        x: { min: number; max: number; range: number }
+        y: { min: number; max: number; range: number }
+        z: { min: number; max: number; range: number }
+      }
+      smoothed: {
+        x: { min: number; max: number; range: number }
+        y: { min: number; max: number; range: number }
+        z: { min: number; max: number; range: number }
+      }
+      sampleCount: number
+    }
+  }) => void
+  /**
+   * VALIDATION: Bypass all quaternion smoothing and apply raw target rotation
+   * Used to isolate whether smoothing is causing rotation regression
+   * true = apply raw quaternion (no smoothing)
+   * false = use QuaternionSmoother (current behavior)
+   * Default: false
+   */
+  bypassQuaternionSmoothing?: boolean
+  /**
+   * VALIDATION: Callback to expose rotation range reset function
+   */
+  onRotationRangesResetCallback?: (resetFn: () => void) => void
 }
 
 export function WatchModel({
@@ -63,6 +106,7 @@ export function WatchModel({
   handOrientation,
   handedness = 'Right',
   smoothing,
+  rotationSmoothing,
   scale,
   dynamicScale = 1,
   useDynamicScaling = false,
@@ -75,10 +119,15 @@ export function WatchModel({
   watchConfig,
   useAdaptiveLerp = true,
   onDebugMetrics,
+  bypassQuaternionSmoothing = false,
+  onRotationDebug,
+  onRotationRangesResetCallback,
 }: WatchModelProps) {
   // Use watchConfig values as base, allow prop overrides for backward compatibility
   const effectiveScale = scale ?? watchConfig?.scale ?? 1
   const effectiveSmoothingValue = smoothing ?? watchConfig?.smoothing ?? 0.3
+  // TICKET 41d: Separate rotation smoothing (default 0.6 to prevent compression)
+  const effectiveRotationSmoothing = rotationSmoothing ?? watchConfig?.rotationSmoothing ?? 0.6
   const effectivePositionOffset = positionOffset ?? watchConfig?.positionOffset ?? { x: 0, y: 0, z: 0 }
   const effectiveRotationOffset = rotationOffset ?? watchConfig?.rotationOffset ?? { x: 0, y: 0, z: 0 }
   const effectiveModelPath = modelPath ?? watchConfig?.modelUrl ?? '/models/watch.glb'
@@ -105,12 +154,38 @@ export function WatchModel({
   const offsetQuatRef  = useRef(new THREE.Quaternion()) // temp inside computeTargetRotation
   const tempEulerRef   = useRef(new THREE.Euler())      // temp inside computeTargetRotation
 
-  // Position stabilizer (One Euro filter + velocity-adaptive lerp)
+  // Position stabilizer (One Euro filter only - validated 33.8% improvement)
   const stabilizer = useRef(new MotionStabilizer())
 
-  // Rotation smoother: pure quaternion slerp with sign correction.
-  // Maintains previousQuaternion across frames; update() returns smoothedQuaternion.
+  // Rotation smoother: Fixed-factor quaternion slerp with sign correction
   const quatSmoother = useRef(new QuaternionSmoother())
+
+  // VALIDATION: Rotation range tracking for logging
+  const rotationRangesRef = useRef({
+    raw: { x: { min: Infinity, max: -Infinity }, y: { min: Infinity, max: -Infinity }, z: { min: Infinity, max: -Infinity } },
+    smoothed: { x: { min: Infinity, max: -Infinity }, y: { min: Infinity, max: -Infinity }, z: { min: Infinity, max: -Infinity } },
+    sampleCount: 0,
+  })
+  const lastLogTimeRef = useRef(0)
+  
+  // VALIDATION: Ref to track bypass mode for useFrame closure (always current value)
+  const bypassModeRef = useRef(bypassQuaternionSmoothing)
+  bypassModeRef.current = bypassQuaternionSmoothing
+
+  // VALIDATION: Expose reset function via callback
+  useEffect(() => {
+    if (onRotationRangesResetCallback) {
+      const resetFn = () => {
+        rotationRangesRef.current = {
+          raw: { x: { min: Infinity, max: -Infinity }, y: { min: Infinity, max: -Infinity }, z: { min: Infinity, max: -Infinity } },
+          smoothed: { x: { min: Infinity, max: -Infinity }, y: { min: Infinity, max: -Infinity }, z: { min: Infinity, max: -Infinity } },
+          sampleCount: 0,
+        }
+        console.log('🔄 Rotation ranges reset')
+      }
+      onRotationRangesResetCallback(resetFn)
+    }
+  }, [onRotationRangesResetCallback])
 
   // Stores the 1/maxDim normalization factor so useFrame can apply final scale
   // without triggering a model re-clone.
@@ -314,9 +389,121 @@ export function WatchModel({
         targetQuatRef.current,
       )
 
-      // ── Step 9: quaternion slerp with dot-product sign correction ──────────
-      const smoothedQuat = quatSmoother.current.update(targetQuatRef.current, effectiveSmoothingValue)
-      groupRef.current.quaternion.copy(smoothedQuat)
+      // ── Step 9: Quaternion smoothing (or raw bypass for validation) ───────────
+      let finalQuat: THREE.Quaternion
+      if (bypassModeRef.current) {
+        // VALIDATION MODE: Apply raw target quaternion directly (no smoothing)
+        groupRef.current.quaternion.copy(targetQuatRef.current)
+        finalQuat = targetQuatRef.current
+      } else {
+        // NORMAL MODE: Fixed-factor quaternion slerp with sign correction
+        // TICKET 41d: Use separate rotation smoothing factor (default 0.6)
+        const smoothedQuat = quatSmoother.current.update(targetQuatRef.current, effectiveRotationSmoothing)
+        groupRef.current.quaternion.copy(smoothedQuat)
+        finalQuat = smoothedQuat
+      }
+
+      // ── Step 10: Export rotation debug data ───────────────────────────────────
+      if (onRotationDebug) {
+        // Convert quaternions to Euler angles for easier interpretation
+        const rawEuler = new THREE.Euler().setFromQuaternion(targetQuatRef.current, 'XYZ')
+        const finalEuler = new THREE.Euler().setFromQuaternion(finalQuat, 'XYZ')
+        
+        const rawEulerDeg = {
+          x: rawEuler.x * (180 / Math.PI),
+          y: rawEuler.y * (180 / Math.PI),
+          z: rawEuler.z * (180 / Math.PI),
+        }
+        const smoothedEulerDeg = {
+          x: finalEuler.x * (180 / Math.PI),
+          y: finalEuler.y * (180 / Math.PI),
+          z: finalEuler.z * (180 / Math.PI),
+        }
+
+        // VALIDATION: Track rotation ranges for both raw and smoothed
+        const ranges = rotationRangesRef.current
+        ranges.sampleCount++
+
+        // Update raw ranges
+        ranges.raw.x.min = Math.min(ranges.raw.x.min, rawEulerDeg.x)
+        ranges.raw.x.max = Math.max(ranges.raw.x.max, rawEulerDeg.x)
+        ranges.raw.y.min = Math.min(ranges.raw.y.min, rawEulerDeg.y)
+        ranges.raw.y.max = Math.max(ranges.raw.y.max, rawEulerDeg.y)
+        ranges.raw.z.min = Math.min(ranges.raw.z.min, rawEulerDeg.z)
+        ranges.raw.z.max = Math.max(ranges.raw.z.max, rawEulerDeg.z)
+
+        // Update smoothed ranges
+        ranges.smoothed.x.min = Math.min(ranges.smoothed.x.min, smoothedEulerDeg.x)
+        ranges.smoothed.x.max = Math.max(ranges.smoothed.x.max, smoothedEulerDeg.x)
+        ranges.smoothed.y.min = Math.min(ranges.smoothed.y.min, smoothedEulerDeg.y)
+        ranges.smoothed.y.max = Math.max(ranges.smoothed.y.max, smoothedEulerDeg.y)
+        ranges.smoothed.z.min = Math.min(ranges.smoothed.z.min, smoothedEulerDeg.z)
+        ranges.smoothed.z.max = Math.max(ranges.smoothed.z.max, smoothedEulerDeg.z)
+
+        // VALIDATION: Console log every 2 seconds with range statistics
+        const now = timestamp
+        if (now - lastLogTimeRef.current >= 2000 && ranges.sampleCount > 10) {
+          console.log('🔄 ROTATION VALIDATION LOG')
+          console.log('Mode:', bypassModeRef.current ? '🔴 RAW (No Smoothing)' : '🟣 SMOOTHED')
+          console.log('Samples:', ranges.sampleCount)
+          
+          console.group('📊 Euler Angle Ranges (degrees)')
+          console.log('X-axis (Pitch):')
+          console.log(`  Raw:      ${ranges.raw.x.min.toFixed(1)}° to ${ranges.raw.x.max.toFixed(1)}° (range: ${(ranges.raw.x.max - ranges.raw.x.min).toFixed(1)}°)`)
+          console.log(`  Smoothed: ${ranges.smoothed.x.min.toFixed(1)}° to ${ranges.smoothed.x.max.toFixed(1)}° (range: ${(ranges.smoothed.x.max - ranges.smoothed.x.min).toFixed(1)}°)`)
+          
+          console.log('Y-axis (Yaw):')
+          console.log(`  Raw:      ${ranges.raw.y.min.toFixed(1)}° to ${ranges.raw.y.max.toFixed(1)}° (range: ${(ranges.raw.y.max - ranges.raw.y.min).toFixed(1)}°)`)
+          console.log(`  Smoothed: ${ranges.smoothed.y.min.toFixed(1)}° to ${ranges.smoothed.y.max.toFixed(1)}° (range: ${(ranges.smoothed.y.max - ranges.smoothed.y.min).toFixed(1)}°)`)
+          
+          console.log('Z-axis (Roll):')
+          console.log(`  Raw:      ${ranges.raw.z.min.toFixed(1)}° to ${ranges.raw.z.max.toFixed(1)}° (range: ${(ranges.raw.z.max - ranges.raw.z.min).toFixed(1)}°)`)
+          console.log(`  Smoothed: ${ranges.smoothed.z.min.toFixed(1)}° to ${ranges.smoothed.z.max.toFixed(1)}° (range: ${(ranges.smoothed.z.max - ranges.smoothed.z.min).toFixed(1)}°)`)
+          console.groupEnd()
+
+          console.group('🎯 Current Frame Values')
+          console.log('Raw Quat:     ', `x:${targetQuatRef.current.x.toFixed(4)} y:${targetQuatRef.current.y.toFixed(4)} z:${targetQuatRef.current.z.toFixed(4)} w:${targetQuatRef.current.w.toFixed(4)}`)
+          console.log('Smoothed Quat:', `x:${finalQuat.x.toFixed(4)} y:${finalQuat.y.toFixed(4)} z:${finalQuat.z.toFixed(4)} w:${finalQuat.w.toFixed(4)}`)
+          console.log('Raw Euler:     ', `x:${rawEulerDeg.x.toFixed(1)}° y:${rawEulerDeg.y.toFixed(1)}° z:${rawEulerDeg.z.toFixed(1)}°`)
+          console.log('Smoothed Euler:', `x:${smoothedEulerDeg.x.toFixed(1)}° y:${smoothedEulerDeg.y.toFixed(1)}° z:${smoothedEulerDeg.z.toFixed(1)}°`)
+          console.groupEnd()
+
+          console.log('─────────────────────────────────────────────')
+          
+          lastLogTimeRef.current = now
+        }
+        
+        onRotationDebug({
+          rawQuaternion: {
+            x: targetQuatRef.current.x,
+            y: targetQuatRef.current.y,
+            z: targetQuatRef.current.z,
+            w: targetQuatRef.current.w,
+          },
+          smoothedQuaternion: {
+            x: finalQuat.x,
+            y: finalQuat.y,
+            z: finalQuat.z,
+            w: finalQuat.w,
+          },
+          rawEuler: rawEulerDeg,
+          smoothedEuler: smoothedEulerDeg,
+          bypassMode: bypassModeRef.current,
+          ranges: {
+            raw: {
+              x: { min: ranges.raw.x.min, max: ranges.raw.x.max, range: ranges.raw.x.max - ranges.raw.x.min },
+              y: { min: ranges.raw.y.min, max: ranges.raw.y.max, range: ranges.raw.y.max - ranges.raw.y.min },
+              z: { min: ranges.raw.z.min, max: ranges.raw.z.max, range: ranges.raw.z.max - ranges.raw.z.min },
+            },
+            smoothed: {
+              x: { min: ranges.smoothed.x.min, max: ranges.smoothed.x.max, range: ranges.smoothed.x.max - ranges.smoothed.x.min },
+              y: { min: ranges.smoothed.y.min, max: ranges.smoothed.y.max, range: ranges.smoothed.y.max - ranges.smoothed.y.min },
+              z: { min: ranges.smoothed.z.min, max: ranges.smoothed.z.max, range: ranges.smoothed.z.max - ranges.smoothed.z.min },
+            },
+            sampleCount: ranges.sampleCount,
+          },
+        })
+      }
     }
 
     // --- Scale (applied to modelRef so normalizedScale from useMemo is preserved) ---

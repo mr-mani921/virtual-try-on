@@ -30,7 +30,11 @@ function CoordinateDebugScene({
   useDynamicScaling,
   dynamicScale,
   useAdaptiveLerp,
-  onDebugMetrics
+  bypassQuaternionSmoothing,
+  rotationSmoothing,
+  onDebugMetrics,
+  onRotationDebug,
+  onRotationRangesResetCallback
 }: { 
   showVisualizer: boolean
   showWristAnchor: boolean
@@ -41,7 +45,11 @@ function CoordinateDebugScene({
   useDynamicScaling: boolean
   dynamicScale: number
   useAdaptiveLerp: boolean
+  bypassQuaternionSmoothing: boolean
+  rotationSmoothing: number
   onDebugMetrics?: (metrics: any) => void
+  onRotationDebug?: (data: any) => void
+  onRotationRangesResetCallback?: (resetFn: () => void) => void
 }) {
   const { camera } = useThree()
   const [handDetection, setHandDetection] = useState<any>(null)
@@ -121,6 +129,7 @@ function CoordinateDebugScene({
             handOrientation={mappedData.handOrientation}
             handedness={handedness}
             smoothing={watchConfig.smoothing}
+            rotationSmoothing={rotationSmoothing}
             scale={watchConfig.scale}
             dynamicScale={dynamicScale}
             useDynamicScaling={useDynamicScaling}
@@ -130,7 +139,10 @@ function CoordinateDebugScene({
             palmNormal={mappedData.palmNormal}
             showDebugAxis={showDebugAxis}
             useAdaptiveLerp={useAdaptiveLerp}
+            bypassQuaternionSmoothing={bypassQuaternionSmoothing}
             onDebugMetrics={onDebugMetrics}
+            onRotationDebug={onRotationDebug}
+            onRotationRangesResetCallback={onRotationRangesResetCallback}
           />
         </>
       )}
@@ -157,8 +169,12 @@ export default function CoordinateDebugPage() {
   const [showCoordinates, setShowCoordinates] = useState(true)
   const [showWatchControls, setShowWatchControls] = useState(true)
   const [useDynamicScaling, setUseDynamicScaling] = useState(true)
-  const [useAdaptiveLerp, setUseAdaptiveLerp] = useState(true)
+  const [useAdaptiveLerp, setUseAdaptiveLerp] = useState(false) // TICKET 41e: Match production default (One Euro only)
+  const [bypassQuaternionSmoothing, setBypassQuaternionSmoothing] = useState(false)
+  const [rotationSmoothing, setRotationSmoothing] = useState(0.6) // TICKET 41d
   const [smoothingMetrics, setSmoothingMetrics] = useState<any>(null)
+  const [rotationDebug, setRotationDebug] = useState<any>(null)
+  const [rotationRangesResetFn, setRotationRangesResetFn] = useState<(() => void) | null>(null)
   const handTrackingStartedRef = useRef(false)
 
   // Watch configuration hook
@@ -205,6 +221,12 @@ export default function CoordinateDebugPage() {
 
   const toggleCamera = () => {
     handTrackingStartedRef.current = false
+  }
+
+  const handleRotationRangesReset = () => {
+    if (rotationRangesResetFn) {
+      rotationRangesResetFn()
+    }
   }
 
   return (
@@ -406,7 +428,11 @@ export default function CoordinateDebugPage() {
               useDynamicScaling={useDynamicScaling}
               dynamicScale={dynamicScale}
               useAdaptiveLerp={useAdaptiveLerp}
+              bypassQuaternionSmoothing={bypassQuaternionSmoothing}
+              rotationSmoothing={rotationSmoothing}
               onDebugMetrics={setSmoothingMetrics}
+              onRotationDebug={setRotationDebug}
+              onRotationRangesResetCallback={setRotationRangesResetFn}
             />
           </Canvas>
           
@@ -640,6 +666,12 @@ export default function CoordinateDebugPage() {
           metrics={smoothingMetrics}
           onToggleAdaptiveLerp={setUseAdaptiveLerp}
           useAdaptiveLerp={useAdaptiveLerp}
+          onToggleQuaternionSmoothing={setBypassQuaternionSmoothing}
+          bypassQuaternionSmoothing={bypassQuaternionSmoothing}
+          rotationDebug={rotationDebug}
+          onResetRotationRanges={handleRotationRangesReset}
+          rotationSmoothing={rotationSmoothing}
+          onRotationSmoothingChange={setRotationSmoothing}
         />
       )}
     </div>

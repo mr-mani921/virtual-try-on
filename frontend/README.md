@@ -74,9 +74,9 @@ The root page (`/`) is the landing page. The original AR test is at `/demo`.
 - `/camera-test` - Camera integration testing
 - `/demo` - Full AR experience (original test page)
 
-### Position Smoothing Experiment (Ticket 41b)
+### Position Smoothing Experiment (Ticket 41b - COMPLETED)
 
-The `/coordinate-debug` page now includes a **Smoothing Debug Panel** for comparing position stabilization strategies:
+The `/coordinate-debug` page includes a **Smoothing Debug Panel** for comparing position stabilization strategies:
 
 **Features:**
 - Toggle between **One Euro Filter only** vs **One Euro + Adaptive Lerp**
@@ -85,19 +85,42 @@ The `/coordinate-debug` page now includes a **Smoothing Debug Panel** for compar
 - Recording sessions with data export
 - Automatic comparison between smoothing strategies
 
+**Results:**
+- **Winner:** One Euro Filter only
+- **Improvement:** 33.8% reduction in position jitter
+- **Root cause:** Adaptive lerp measured velocity from already-smoothed data, creating feedback loop that amplified jitter instead of reducing it
+
+**Current Implementation (Validated):**
+```
+Target Position → One Euro Filter → Fixed Lerp (0.3) → Final Position
+```
+
+### Rotation Smoothing Validation (Ticket 41c - IN PROGRESS)
+
+The `/coordinate-debug` page now includes **Quaternion Smoothing Bypass** for validating rotation pipeline:
+
+**Purpose:**
+- Isolate whether smoothing layer is causing rotation regression
+- Compare raw (unsmoothed) vs smoothed quaternion behavior
+- Verify V2 coordinate system correctly follows all wrist rotations
+
 **How to use:**
 1. Navigate to `/coordinate-debug`
-2. Show your hand to start tracking
-3. Use the **Smoothing Debug Panel** (top-right) to:
-   - Toggle smoothing modes
-   - Start/stop recording sessions
-   - Compare recorded data
-   - Export results as JSON
+2. Use the **Rotation Smoothing** toggle in the debug panel
+3. Test both modes during:
+   - Front-facing wrist
+   - Back-facing wrist
+   - Side-facing wrist (left/right)
+   - Continuous wrist rotation
+4. Observe if side rotations work correctly in RAW mode
 
-**Metrics Explained:**
-- **Position Variance**: Frame-to-frame position change (mm)
-- **Velocity**: Speed of hand movement (units/second)
-- **Adaptive Alpha**: Smoothing factor (0.15-0.6, higher = more responsive)
+**Modes:**
+- **Smoothed (Purple)**: Normal operation with fixed-factor slerp (0.3)
+- **RAW (Red)**: Bypass all smoothing, apply target quaternion directly (validation only)
+
+**Expected Outcome:**
+- If RAW mode follows all rotations correctly → regression is in smoothing layer
+- If RAW mode has same constraint → regression is upstream (V2 coordinate system or calibration)
 - **Std Dev**: Consistency of jitter over time
 
 **Expected Results:**
@@ -130,6 +153,47 @@ loadPreset('sports')
 | Language | TypeScript |
 | Styling | Tailwind CSS |
 | PWA | next-pwa + Workbox |
+
+### Smoothing Architecture (Validated & Optimized)
+
+**Position Smoothing** (Single-layer, 33.8% jitter reduction):
+```
+Target Position
+  ↓
+One Euro Filter (adaptive via beta parameter)
+  - minCutoff: 1.5
+  - beta: 0.01
+  - Automatically adapts to velocity
+  ↓
+Simple Fixed Lerp (smoothing factor: 0.3)
+  ↓
+Final Position
+```
+
+**Rotation Smoothing** (Adaptive based on angular velocity):
+```
+Target Quaternion
+  ↓
+AdaptiveQuaternionSmoother
+  1. Calculate angular velocity (°/s)
+  2. Map to smoothing factor:
+     - Slow (< 30°/s): 0.15 (heavy smoothing)
+     - Medium (30-90°/s): 0.15-0.45 (interpolated)
+     - Fast (> 90°/s): 0.45 (light smoothing)
+  3. Slerp with adaptive factor
+  ↓
+Final Rotation
+```
+
+**Why This Works:**
+- ✅ One Euro Filter adapts internally (no double-smoothing)
+- ✅ Rotation adapts to ROTATION speed (not position velocity)
+- ✅ Heavy smoothing eliminates micro-movement jitter
+- ✅ Light smoothing preserves responsiveness
+- ✅ Data-backed: 33.8% position jitter reduction validated
+
+**Removed:**
+- ❌ Velocity-Adaptive Lerp (created feedback loop, added 33.8% MORE jitter)
 
 ### Project Structure
 

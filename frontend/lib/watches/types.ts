@@ -21,6 +21,13 @@ export interface WatchConfiguration {
   positionOffset: { x: number; y: number; z: number }
   occluderOffset?: { x: number; y: number; z: number }
   smoothing?: number
+  /**
+   * TICKET 41d: Separate rotation smoothing factor
+   * Controls quaternion slerp alpha (0.3-0.85)
+   * Higher = more responsive, lower = more stable
+   * Default: 0.6 (preserves rotation range while reducing jitter)
+   */
+  rotationSmoothing?: number
   description?: string
   price?: string
 }
