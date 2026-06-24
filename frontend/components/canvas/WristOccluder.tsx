@@ -1,11 +1,12 @@
 'use client'
 
-import { useRef } from 'react'
+import { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { WorldCoordinates } from '@/lib/three/coordinateMapping'
 import { lerpWorldCoordinates } from '@/lib/three/coordinateMapping'
 import { MotionStabilizer, QuaternionSmoother } from '@/lib/three/motionSmoothing'
+import { createOptimizedWristGeometry } from '@/lib/three/wristGeometry'
 
 interface WristOccluderProps {
   wristPosition: WorldCoordinates | null
@@ -40,13 +41,20 @@ interface WristOccluderProps {
 }
 
 /**
- * Invisible depth-mask ellipsoid that creates a realistic forearm-volume
- * occlusion illusion.
+ * TICKET 43c: Invisible depth-mask tapered wrist volume that creates a realistic
+ * forearm-volume occlusion illusion.
  *
  * Renders at renderOrder=-1 (before the watch) with colorWrite=false and
- * depthWrite=true.  Watch fragments that fall behind the occluder surface fail
+ * depthWrite=true. Watch fragments that fall behind the occluder surface fail
  * the depth test and are discarded, revealing the transparent canvas (camera
  * feed) so the strap appears to wrap around the wrist.
+ *
+ * ── Geometry (V2 - TICKET 43c) ─────────────────────────────────────────────────
+ * Uses anatomically-tapered cylinder instead of uniform cylinder:
+ *   - Narrow at wrist position (where watch sits)
+ *   - Gradually widens toward forearm direction
+ *   - Taper ratio: 0.75 (wrist is 75% of forearm width)
+ *   - 32 radial segments, 8 height segments for smooth taper
  *
  * ── Orientation ───────────────────────────────────────────────────────────────
  * The GROUP quaternion is set to handOrientation so the group's local frame
@@ -55,16 +63,19 @@ interface WristOccluderProps {
  *   group +Y = into palm
  *   group +Z = forearm direction
  *
- * CylinderGeometry has its height axis along MESH local +Y.  Adding a static
+ * Tapered geometry has its height axis along MESH local +Y. Adding a static
  * Rx(π/2) rotation on the mesh tilts that height axis to align with group +Z
- * (forearm).  After the rotation the mesh scale axes map as:
+ * (forearm). After the rotation the mesh scale axes map as:
  *   scaleX → group +X  (lateral hand-width)   — wider
  *   scaleY → group +Z  (forearm length)        — segment length along arm
  *   scaleZ → group +Y  (AP / into-palm depth)  — thinner = elliptical cross-section
  *
+ * The taper direction after rotation:
+ *   z = 0 (wrist, narrow end) → z = +length (forearm, wide end)
+ *
  * ── Palm-side offset ──────────────────────────────────────────────────────────
  * The mesh is shifted +Y (into palm) in group space so the occluder sits
- * slightly inside the wrist volume.  This ensures strap fragments wrapping
+ * slightly inside the wrist volume. This ensures strap fragments wrapping
  * around the inner wrist are caught by the depth test without over-occluding
  * the watch face on the back of the hand.
  */
@@ -94,6 +105,10 @@ export function WristOccluder({
   const indexVecRef = useRef(new THREE.Vector3())
   const pinkyVecRef = useRef(new THREE.Vector3())
 
+  // TICKET 43c: Create tapered wrist geometry once (not per-frame)
+  // Tapered cylinder: narrow at wrist (75% radius), wider at forearm (100% radius)
+  const wristGeometry = useMemo(() => createOptimizedWristGeometry(), [])
+
   useFrame(() => {
     if (!groupRef.current || !wristPosition || !enabled) return
 
@@ -114,14 +129,18 @@ export function WristOccluder({
     }
 
     // --- Rotation: pure quaternion slerp with sign correction ---
-    // handOrientation is used directly (no rotationOffset) so the cylinder's
-    // local +Z stays aligned with the forearm direction from computeWristQuaternion.
+    // handOrientation is used directly (no rotationOffset) so the tapered
+    // geometry's local +Z stays aligned with the forearm direction from
+    // computeWristQuaternion.
     if (handOrientation) {
       const smoothedQuat = quatSmoother.current.update(handOrientation, smoothing)
       groupRef.current.quaternion.copy(smoothedQuat)
     }
 
-    // --- Scale ellipsoid to anatomical forearm volume each frame ---
+    // --- Scale tapered wrist geometry to anatomical forearm volume each frame ---
+    //
+    // TICKET 43c: Tapered geometry automatically narrows at wrist, widens at forearm.
+    // Scale still controls overall dimensions, taper ratio is baked into geometry.
     //
     // After mesh Rx(π/2) the scale axes map as:
     //   scaleX → group +X  (lateral)
@@ -133,7 +152,7 @@ export function WristOccluder({
     //   front face y = palmOffset − scaleZ/2
     //   back  face y = palmOffset + scaleZ/2
     //
-    // TICKET 43b: palmOffset calculation now includes:
+    // TICKET 43b: palmOffset calculation includes:
     //   1. Base offset: scaleZ/2 (centers occluder at wrist)
     //   2. frontFaceDepthBias: per-watch tuning (positive = retreat toward palm)
     //   3. occluderOffset.y: legacy additional bias
@@ -181,17 +200,27 @@ export function WristOccluder({
   return (
     <group ref={groupRef}>
       {/*
-        rotation={[Math.PI / 2, 0, 0]}: static Rx(π/2) tilts the cylinder's
+        TICKET 43c: Tapered wrist geometry replaces uniform cylinder.
+        
+        rotation={[Math.PI / 2, 0, 0]}: static Rx(π/2) tilts the geometry's
         height axis (mesh local +Y) to align with the group's forearm direction
-        (+Z).  scale is applied in mesh local space, so after this rotation:
+        (+Z). scale is applied in mesh local space, so after this rotation:
           scaleX → lateral (group +X)
           scaleY → forearm (group +Z)
           scaleZ → into-palm depth (group +Y)  ← produces elliptical cross-section
-        TICKET 43b: 32 radial segments (increased from 16) for smoother occlusion
-        edges and reduced artifacts at shallow viewing angles.
+        
+        Tapered geometry characteristics:
+          - 32 radial segments (TICKET 43b increased from 16) for smooth edges
+          - 8 height segments for smooth taper transition
+          - 0.75 taper ratio (wrist is 75% of forearm width)
+          - Narrow end at z=0 (wrist position)
+          - Wide end at z=+length (forearm direction)
+        
+        This creates anatomically accurate wrist-to-forearm volume that better
+        matches natural hand anatomy compared to uniform cylinder.
       */}
       <mesh ref={occluderRef} rotation={[Math.PI / 2, 0, 0]} renderOrder={-1}>
-        <cylinderGeometry args={[1, 1, 1, 32, 1]} />
+        <primitive object={wristGeometry} attach="geometry" />
         <meshBasicMaterial colorWrite={false} depthWrite={true} />
       </mesh>
     </group>

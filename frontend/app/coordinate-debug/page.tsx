@@ -17,6 +17,8 @@ import { WristOccluder } from '@/components/canvas/WristOccluder'
 import { ModelInspector } from '@/components/canvas/ModelInspector'
 import { WatchControls } from '@/components/ui/WatchControls'
 import { SmoothingDebugPanel } from '@/components/ui/SmoothingDebugPanel'
+import { ScaleDiagnosticsPanel } from '@/components/ui/ScaleDiagnosticsPanel'
+import { WristSizeVariancePanel } from '@/components/ui/WristSizeVariancePanel'
 import { Environment } from '@/components/canvas/Environment'
 import Link from 'next/link'
 
@@ -194,7 +196,7 @@ export default function CoordinateDebugPage() {
   })
 
   // Dynamic scaling hook
-  const { dynamicScale, handWidth, wristDepth, isStable } = useDynamicScale(
+  const { dynamicScale, handWidth, wristDepth, isStable, diagnostics, wristSizeVariance } = useDynamicScale(
     handDetection,
     {
       baseScale: watchConfig.config.scale,
@@ -664,17 +666,27 @@ export default function CoordinateDebugPage() {
 
       {/* Smoothing Debug Panel */}
       {showWatchModel && (
-        <SmoothingDebugPanel
-          metrics={smoothingMetrics}
-          onToggleAdaptiveLerp={setUseAdaptiveLerp}
-          useAdaptiveLerp={useAdaptiveLerp}
-          onToggleQuaternionSmoothing={setBypassQuaternionSmoothing}
-          bypassQuaternionSmoothing={bypassQuaternionSmoothing}
-          rotationDebug={rotationDebug}
-          onResetRotationRanges={handleRotationRangesReset}
-          rotationSmoothing={rotationSmoothing}
-          onRotationSmoothingChange={setRotationSmoothing}
-        />
+        <>
+          <SmoothingDebugPanel
+            metrics={smoothingMetrics}
+            onToggleAdaptiveLerp={setUseAdaptiveLerp}
+            useAdaptiveLerp={useAdaptiveLerp}
+            onToggleQuaternionSmoothing={setBypassQuaternionSmoothing}
+            bypassQuaternionSmoothing={bypassQuaternionSmoothing}
+            rotationDebug={rotationDebug}
+            onResetRotationRanges={handleRotationRangesReset}
+            rotationSmoothing={rotationSmoothing}
+            onRotationSmoothingChange={setRotationSmoothing}
+          />
+          <ScaleDiagnosticsPanel 
+            diagnostics={diagnostics}
+            className="absolute top-4 left-1/2 transform -translate-x-1/2 w-96 max-h-[calc(100vh-100px)] overflow-y-auto"
+          />
+          <WristSizeVariancePanel
+            diagnostics={wristSizeVariance}
+            className="absolute top-4 right-4 w-96 max-h-[calc(100vh-100px)] overflow-y-auto"
+          />
+        </>
       )}
     </div>
   )
