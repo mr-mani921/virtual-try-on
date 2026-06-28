@@ -141,6 +141,323 @@ const { config, loadPreset } = useWatchConfig('default')
 loadPreset('sports')
 ```
 
+## Watch Calibration System V2
+
+The TimeVision platform includes a comprehensive per-watch calibration system for precise AR positioning. Each watch in the registry can be individually fine-tuned for optimal visual accuracy.
+
+### Configuration Architecture
+
+All watch configurations are stored in `/lib/watches/registry.ts`. Each watch has the following calibration parameters:
+
+#### 1. **Scale Calibration**
+
+Controls the physical size of the watch model relative to the user's wrist.
+
+```typescript
+scale: 1.5
+```
+
+- **Range**: `0.5` (small/slim) to `3.0` (large/bulky)
+- **Default**: `1.5` (standard watch size)
+- **Use Cases**:
+  - Small dress watches: `1.2 - 1.4`
+  - Standard watches: `1.4 - 1.6`
+  - Sports watches: `1.6 - 1.8`
+  - Large/bulky watches: `1.8 - 2.2`
+
+#### 2. **Rotation Offset**
+
+Applied in **wrist local coordinate frame** after wrist quaternion computation. Controls the angular orientation of the watch face.
+
+```typescript
+rotationOffset: { x: Math.PI / 2, y: 0, z: 0 }
+```
+
+- **Units**: Radians
+- **Coordinate Frame**: Wrist-local (X: lateral, Y: depth, Z: forearm)
+- **Standard Values**:
+  - `x: π/2` (90°) - Rotates watch face to align with wrist dorsal side (almost always required)
+  - `y: 0` - No lateral rotation (adjust if watch face is tilted left/right)
+  - `z: 0` - No twist around forearm (adjust if watch is rotated around wrist)
+- **Common Adjustments**:
+  - Watch face tilted left: Increase `y` (e.g., `0.1`)
+  - Watch face tilted right: Decrease `y` (e.g., `-0.1`)
+  - Watch rotated clockwise around wrist: Increase `z`
+  - Watch rotated counterclockwise: Decrease `z`
+
+#### 3. **Position Offset**
+
+Applied in **wrist local coordinate frame** before palm normal depth adjustment. Controls the 3D translation of the watch.
+
+```typescript
+positionOffset: { x: 0, y: 0.02, z: 0 }
+```
+
+- **Units**: World units (typically meters)
+- **Coordinate Frame**: Wrist-local
+  - **X**: Lateral shift (positive = toward pinky, negative = toward thumb)
+  - **Y**: Depth into wrist (positive = deeper into wrist surface, negative = more on surface)
+  - **Z**: Along forearm (positive = toward fingers, negative = toward elbow)
+- **Typical Range**: `-0.05` to `0.05`
+- **Common Adjustments**:
+  - Watch appears too high on wrist: Increase `y` (e.g., `0.01`)
+  - Watch appears sunken: Decrease `y` (e.g., `-0.01`)
+  - Watch too far toward thumb: Increase `x`
+  - Watch too far toward fingers: Increase `z`
+
+#### 4. **Wrist Fit Bias** (NEW in V2)
+
+Fine-tunes how deep the watch sits **INTO** the wrist surface. This is **additive to `positionOffset.y`** and applied along the palm normal vector for stable surface anchoring.
+
+```typescript
+wristFitBias: 0.015
+```
+
+- **Range**: `-0.02` (surface) to `0.02` (deep)
+- **Default**: `0` (standard fit)
+- **Use Cases**:
+  - **Positive values** (+0.005 to +0.02): Bulky/thick watches that need to sink deeper into the wrist
+  - **Negative values** (-0.005 to -0.02): Slim/flat watches that should sit more on the surface
+  - **Zero**: Standard fit (watch sits at wrist surface)
+- **Category Guidelines**:
+  - Sports watches: `0.010 - 0.015` (bulky, athletic build)
+  - Luxury watches: `-0.005 - -0.010` (slim, elegant profile)
+  - Casual watches: `0 - 0.005` (standard to slightly thick)
+  - Smart watches: `0.006 - 0.012` (typically thicker bodies)
+
+**Why separate from `positionOffset.y`?**
+- `positionOffset.y` applies in the wrist coordinate frame (may not be perpendicular to skin surface)
+- `wristFitBias` applies along the palm normal vector (always perpendicular to wrist surface)
+- This provides stable depth control regardless of wrist orientation
+
+#### 5. **Occluder Offset**
+
+Adjusts the invisible geometry that hides the watch when the hand covers it. Typically matches `positionOffset` for consistent depth handling.
+
+```typescript
+occluderOffset: { x: 0, y: 0, z: 0 }
+```
+
+- **Units**: World units
+- **Best Practice**: Usually set to `{ x: 0, y: 0, z: 0 }` and use `positionOffset` + `wristFitBias` instead
+- **When to adjust**: Only if occlusion boundary needs independent control from watch position
+
+#### 6. **Motion Smoothing**
+
+##### Position Smoothing
+
+```typescript
+smoothing: 0.3
+```
+
+- **Range**: `0.15` (heavy smoothing) to `0.5` (light smoothing)
+- **Default**: `0.3` (validated optimal)
+- **Applied**: After One Euro Filter, as a fixed lerp factor
+- **Effect**: Lower values = smoother but less responsive, higher values = more responsive but potentially jittery
+
+##### Rotation Smoothing
+
+```typescript
+rotationSmoothing: 0.6
+```
+
+- **Range**: `0.3` (heavy smoothing) to `0.85` (light smoothing)
+- **Default**: `0.6` (validated optimal, preserves full rotation range)
+- **Applied**: As slerp alpha for quaternion interpolation
+- **CRITICAL**: Values < 0.5 may cause rotation compression (loss of side rotation range)
+- **Effect**: Controls responsiveness vs. stability of watch orientation
+
+**Why separate from position smoothing?**
+- Rotation and position have different dynamic characteristics
+- Position smoothing factor `0.3` was optimal for eliminating translation jitter
+- But `0.3` for rotation caused 28-33% compression of rotation range
+- Separate controls allow independent optimization
+
+### Watch Configuration Example
+
+```typescript
+'sport-watch-01': {
+  id: 'sport-watch-01',
+  name: 'Sport Pro',
+  brand: 'ActiveTime',
+  category: 'sports',
+  thumbnail: 'https://example.com/sport-watch.png',
+  modelUrl: '/models/watch.glb',
+  
+  // Calibration System V2
+  scale: 1.8,                                        // Large athletic watch
+  rotationOffset: { x: Math.PI / 2, y: 0, z: 0 },  // Standard alignment
+  positionOffset: { x: 0, y: 0.02, z: 0 },         // Slightly raised
+  wristFitBias: 0.015,                              // Bulky sports watch sits deeper
+  occluderOffset: { x: 0, y: 0, z: 0 },            // Default
+  smoothing: 0.3,                                   // Validated position smoothing
+  rotationSmoothing: 0.6,                           // Validated rotation smoothing
+  
+  description: 'Rugged sports watch built for performance',
+  price: '$399',
+}
+```
+
+### Calibration Workflow
+
+#### Step 1: Initial Configuration
+
+1. Add new watch entry to `WATCH_REGISTRY` in `/lib/watches/registry.ts`
+2. Set baseline values:
+   ```typescript
+   scale: 1.5,
+   rotationOffset: { x: Math.PI / 2, y: 0, z: 0 },
+   positionOffset: { x: 0, y: 0, z: 0 },
+   wristFitBias: 0,
+   occluderOffset: { x: 0, y: 0, z: 0 },
+   smoothing: 0.3,
+   rotationSmoothing: 0.6,
+   ```
+
+#### Step 2: Visual Testing
+
+1. Navigate to `/coordinate-debug` or `/try-on/[watchId]`
+2. Enable camera and hand tracking
+3. Observe watch placement from multiple angles:
+   - Front-facing wrist
+   - Back-facing wrist
+   - Side-facing wrist (left/right)
+   - Rotated wrist positions
+
+#### Step 3: Iterative Tuning
+
+Adjust parameters based on visual observations:
+
+**If watch is too small/large:**
+- Modify `scale` (0.1 increments initially)
+
+**If watch face is misaligned:**
+- Adjust `rotationOffset.y` (0.05 rad increments)
+- Adjust `rotationOffset.z` for wrist twist alignment
+
+**If watch floats above wrist:**
+- Increase `positionOffset.y` (0.005 increments)
+- For bulky watches: Also increase `wristFitBias` (0.005 increments)
+
+**If watch sinks too deep:**
+- Decrease `positionOffset.y`
+- For slim watches: Use negative `wristFitBias` (-0.005 to -0.010)
+
+**If watch is shifted laterally:**
+- Adjust `positionOffset.x` (left/right alignment)
+
+**If watch is too far forward/back on wrist:**
+- Adjust `positionOffset.z` (finger/elbow direction)
+
+**If tracking is jittery:**
+- Decrease `smoothing` (0.25-0.3 for heavier smoothing)
+- Do NOT adjust `rotationSmoothing` below 0.5 (causes rotation compression)
+
+**If tracking feels sluggish:**
+- Increase `smoothing` (0.35-0.4 for lighter smoothing)
+- Increase `rotationSmoothing` (0.65-0.75 for more responsive rotation)
+
+#### Step 4: Category-Specific Guidelines
+
+**Sports Watches:**
+```typescript
+scale: 1.7 - 1.9           // Larger, athletic build
+wristFitBias: 0.010 - 0.015 // Bulky, sits deeper
+smoothing: 0.3              // Standard stability
+```
+
+**Luxury Watches:**
+```typescript
+scale: 1.3 - 1.5           // Slim, elegant profile
+wristFitBias: -0.005 - -0.010 // Sits closer to surface
+smoothing: 0.35 - 0.4       // Slightly more responsive
+```
+
+**Casual Watches:**
+```typescript
+scale: 1.4 - 1.6           // Standard size
+wristFitBias: 0 - 0.005    // Standard to slightly thick
+smoothing: 0.3              // Balanced
+```
+
+**Smart Watches:**
+```typescript
+scale: 1.5 - 1.7           // Rectangular, thicker
+wristFitBias: 0.006 - 0.012 // Thicker bodies
+smoothing: 0.3              // Standard stability
+```
+
+#### Step 5: Validation
+
+Test calibrated watch in production environment (`/try-on/[watchId]`) with:
+- Different hand sizes (if possible)
+- Various lighting conditions
+- Full range of wrist rotations
+- Fast vs. slow hand movements
+
+Ensure:
+- ✅ Watch stays anchored to wrist during all movements
+- ✅ No visible floating or clipping through skin
+- ✅ Smooth tracking without jitter
+- ✅ Full rotation range preserved (side rotations work correctly)
+- ✅ Realistic depth perception
+
+### Accessing Configurations Programmatically
+
+```typescript
+import { WATCH_REGISTRY } from '@/lib/watches/registry'
+
+// Get specific watch config
+const sportWatch = WATCH_REGISTRY['sport-watch-01']
+
+// Use in component
+<WatchModel
+  watchConfig={sportWatch}
+  wristPosition={wristPos}
+  handOrientation={handQuat}
+/>
+```
+
+### Key Differences from V1
+
+| Parameter | V1 | V2 |
+|-----------|----|----|
+| Wrist Fit Control | Only `positionOffset.y` | `positionOffset.y` + `wristFitBias` |
+| Rotation Smoothing | Shared with position (`smoothing`) | Independent (`rotationSmoothing`) |
+| Depth Anchoring | Wrist coordinate frame | Palm normal vector |
+| Compression Issue | 28-33% rotation loss at smoothing=0.3 | Resolved with independent rotation factor |
+
+### Troubleshooting
+
+**Problem**: Watch appears to "lag" behind hand rotation
+- **Cause**: `rotationSmoothing` too low
+- **Fix**: Increase to 0.65-0.75
+
+**Problem**: Watch doesn't follow side rotations (wrist twist)
+- **Cause**: `rotationSmoothing` < 0.5 (rotation compression)
+- **Fix**: Increase to minimum 0.6
+
+**Problem**: Watch jitters during slow movements
+- **Cause**: `smoothing` too high (0.4+)
+- **Fix**: Decrease to 0.3
+
+**Problem**: Watch "floats" when wrist rotates
+- **Cause**: `wristFitBias` not matched to watch thickness
+- **Fix**: Increase for bulky watches, decrease for slim watches
+
+**Problem**: Watch appears too large/small compared to catalog image
+- **Cause**: Model export scale mismatch
+- **Fix**: Adjust `scale` parameter in 0.1 increments
+
+### Performance Notes
+
+- **Smoothing Impact**: Lower smoothing factors (0.15-0.25) add ~1-2ms per frame due to heavier filtering
+- **No Impact**: Scale, rotation offset, position offset, wrist fit bias have zero performance cost
+- **Recommended for 60 FPS**: `smoothing: 0.3`, `rotationSmoothing: 0.6`
+- **Recommended for 30 FPS**: `smoothing: 0.25`, `rotationSmoothing: 0.55`
+
+---
+
 ## Architecture
 
 ### Tech Stack

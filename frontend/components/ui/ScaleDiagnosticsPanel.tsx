@@ -39,9 +39,12 @@ export function ScaleDiagnosticsPanel({
   } else if (depthInCm < 80) {
     distanceCategory = '60-80cm (Normal)'
     categoryColor = 'text-green-400'
-  } else {
-    distanceCategory = '> 80cm (Far)'
+  } else if (depthInCm < 120) {
+    distanceCategory = '80-120cm (Far)'
     categoryColor = 'text-blue-400'
+  } else {
+    distanceCategory = '> 120cm (Very Far)'
+    categoryColor = 'text-purple-400'
   }
 
   return (
@@ -154,23 +157,73 @@ export function ScaleDiagnosticsPanel({
       {/* Scale Factors */}
       <div className="space-y-1 bg-gray-800/50 p-2 rounded">
         <div className="text-xs font-medium text-yellow-300">
-          ⚖️ Scale Factors
+          ⚖️ Scale Factors (44c Rebalance)
         </div>
         <div className="grid grid-cols-2 gap-2 text-xs">
-          <div>
-            <span className="text-gray-400">Size Factor:</span>
+          <div className="col-span-2">
+            <span className="text-gray-400">Size (measured):</span>
+            <span className="ml-1 text-white font-mono">
+              {diagnostics.sizeFactorRaw.toFixed(4)}
+            </span>
+          </div>
+          <div className="col-span-2">
+            <span className="text-gray-400">Size (clamped):</span>
+            <span className="ml-1 text-white font-mono">
+              {diagnostics.sizeFactorClamped.toFixed(4)}
+            </span>
+            {diagnostics.sizeFactorClampedHit && (
+              <span className="ml-2 text-orange-400 font-bold">🔒</span>
+            )}
+          </div>
+          <div className="col-span-2">
+            <span className="text-gray-400">Size (applied):</span>
             <span className="ml-1 text-white font-mono">
               {diagnostics.sizeFactor.toFixed(4)}
             </span>
+            <span className="ml-2 text-gray-500">
+              @ {(diagnostics.sizeFactorInfluence * 100).toFixed(0)}%
+            </span>
           </div>
-          <div>
+          <div className="col-span-2">
             <span className="text-gray-400">Depth Factor:</span>
             <span className="ml-1 text-white font-mono">
               {diagnostics.depthFactor.toFixed(4)}
             </span>
+            <span className="ml-2 text-gray-500">
+              exp {diagnostics.depthExponent}
+            </span>
           </div>
         </div>
       </div>
+
+      {/* Factor Contribution Audit */}
+      {isCalibrated && (
+        <div className="space-y-1 bg-blue-900/20 border border-blue-500/30 p-2 rounded">
+          <div className="text-xs font-medium text-blue-300">
+            📊 Factor Contribution
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span className="text-gray-400">Size:</span>
+              <span className="ml-1 text-white font-mono">
+                {diagnostics.sizeContributionPercent.toFixed(1)}%
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-400">Depth:</span>
+              <span className="ml-1 text-white font-mono">
+                {diagnostics.depthContributionPercent.toFixed(1)}%
+              </span>
+            </div>
+            <div className="col-span-2">
+              <span className="text-gray-400">Net vs base:</span>
+              <span className="ml-1 text-white font-mono">
+                {((diagnostics.sizeFactor * diagnostics.depthFactor - 1) * 100).toFixed(1)}%
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Final Scale */}
       <div className="space-y-1 bg-gray-800/50 p-2 rounded">
@@ -218,13 +271,13 @@ export function ScaleDiagnosticsPanel({
             <div>
               <span className="text-gray-400">Depth contribution:</span>
               <span className="ml-1 text-white font-mono">
-                {((diagnostics.depthFactor - 1) * 100).toFixed(1)}%
+                {diagnostics.depthContributionPercent.toFixed(1)}%
               </span>
             </div>
             <div>
               <span className="text-gray-400">Size contribution:</span>
               <span className="ml-1 text-white font-mono">
-                {((diagnostics.sizeFactor - 1) * 100).toFixed(1)}%
+                {diagnostics.sizeContributionPercent.toFixed(1)}%
               </span>
             </div>
           </div>
@@ -233,12 +286,13 @@ export function ScaleDiagnosticsPanel({
 
       {/* Testing Instructions */}
       <div className="text-xs text-gray-400 bg-gray-800/30 p-2 rounded border border-gray-700">
-        <div className="font-medium text-gray-300 mb-1">Testing Protocol:</div>
+        <div className="font-medium text-gray-300 mb-1">Testing Protocol (44c):</div>
         <ul className="list-disc list-inside space-y-0.5 text-gray-400">
           <li>Move hand to ~30cm (very close)</li>
           <li>Move hand to ~50cm (normal)</li>
-          <li>Move hand to ~70cm (far)</li>
-          <li>Compare scale growth across distances</li>
+          <li>Move hand to ~80cm (mid-far)</li>
+          <li>Move hand to ~120cm (far)</li>
+          <li>Check: attached feel, natural growth, no inflation</li>
         </ul>
       </div>
     </div>

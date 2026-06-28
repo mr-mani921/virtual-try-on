@@ -19,9 +19,96 @@ import { WatchControls } from '@/components/ui/WatchControls'
 import { SmoothingDebugPanel } from '@/components/ui/SmoothingDebugPanel'
 import { ScaleDiagnosticsPanel } from '@/components/ui/ScaleDiagnosticsPanel'
 import { WristSizeVariancePanel } from '@/components/ui/WristSizeVariancePanel'
+import { MeasurementStabilizationPanel } from '@/components/ui/MeasurementStabilizationPanel'
 import { Environment } from '@/components/canvas/Environment'
 import Link from 'next/link'
 
+// Camera Overlay Scene - Same as try-on page (flipHorizontal: false)
+function CameraOverlayScene({
+  handDetection,
+  watchConfig,
+  handedness,
+  dynamicScale,
+  useAdaptiveLerp,
+  bypassQuaternionSmoothing,
+  onDebugMetrics,
+  onRotationDebug,
+}: {
+  handDetection: any
+  watchConfig: any
+  handedness: 'Left' | 'Right'
+  dynamicScale: number
+  useAdaptiveLerp: boolean
+  bypassQuaternionSmoothing: boolean
+  onDebugMetrics?: (metrics: any) => void
+  onRotationDebug?: (data: any) => void
+}) {
+  const { camera } = useThree()
+
+  const mappedData = useCoordinateMapping(handDetection, camera, {
+    videoWidth: 1280,
+    videoHeight: 720,
+    flipHorizontal: false, // Same as try-on page
+  })
+
+  const isHandTracked = handDetection !== null && mappedData !== null
+
+  return (
+    <>
+      {isHandTracked && (
+        <>
+          <WristOccluder
+            wristPosition={mappedData.wristPosition}
+            handOrientation={mappedData.handOrientation}
+            indexBasePosition={mappedData.indexBasePosition}
+            pinkyBasePosition={mappedData.pinkyBasePosition}
+            palmNormal={mappedData.palmNormal}
+            occluderOffset={watchConfig.occluderOffset}
+            smoothing={watchConfig.smoothing}
+          />
+          <WatchModel
+            wristPosition={mappedData.wristPosition}
+            handOrientation={mappedData.handOrientation}
+            handedness={handedness}
+            smoothing={watchConfig.smoothing}
+            scale={watchConfig.scale}
+            dynamicScale={dynamicScale}
+            useDynamicScaling={true}
+            positionOffset={watchConfig.positionOffset}
+            rotationOffset={watchConfig.rotationOffset}
+            wristFitBias={watchConfig.wristFitBias}
+            palmNormal={mappedData.palmNormal}
+            showDebugAxis={false}
+            useAdaptiveLerp={useAdaptiveLerp}
+            bypassQuaternionSmoothing={bypassQuaternionSmoothing}
+            onDebugMetrics={onDebugMetrics}
+            onRotationDebug={onRotationDebug}
+          />
+        </>
+      )}
+
+      <Environment preset="studio" intensity={1.2} />
+      <ambientLight intensity={0.3} />
+      <directionalLight
+        position={[5, 5, 5]}
+        intensity={0.8}
+        castShadow
+        shadow-mapSize={[1024, 1024]}
+        shadow-bias={-0.0001}
+      />
+      <pointLight position={[-5, 3, -5]} intensity={0.4} color="#fff" />
+      <spotLight
+        position={[0, 5, 0]}
+        intensity={0.3}
+        angle={Math.PI / 4}
+        penumbra={0.5}
+        castShadow
+      />
+    </>
+  )
+}
+
+// 3D Debug Panel Scene - Debug view (flipHorizontal: true)
 function CoordinateDebugScene({ 
   showVisualizer, 
   showWristAnchor,
@@ -173,6 +260,7 @@ export default function CoordinateDebugPage() {
   const [showCoordinates, setShowCoordinates] = useState(true)
   const [showWatchControls, setShowWatchControls] = useState(true)
   const [useDynamicScaling, setUseDynamicScaling] = useState(true)
+  const [show3DControlsPanel, setShow3DControlsPanel] = useState(false)
   const [useAdaptiveLerp, setUseAdaptiveLerp] = useState(false) // TICKET 41e: Match production default (One Euro only)
   const [bypassQuaternionSmoothing, setBypassQuaternionSmoothing] = useState(false)
   const [rotationSmoothing, setRotationSmoothing] = useState(0.6) // TICKET 41d
@@ -280,6 +368,37 @@ export default function CoordinateDebugPage() {
             videoElement={videoElement}
             showLandmarks={showLandmarks}
           />
+
+          {/* 3D AR Overlay on Camera (same as try-on page) */}
+          {showWatchModel && cameraReady && (
+            <div className="absolute inset-0 pointer-events-none z-10">
+              <Canvas
+                camera={{
+                  fov: 75,
+                  near: 0.1,
+                  far: 1000,
+                  position: [0, 0, 0],
+                }}
+                gl={{
+                  antialias: true,
+                  alpha: true,
+                  preserveDrawingBuffer: true,
+                }}
+              >
+                {/* Camera overlay uses try-on page setup */}
+                <CameraOverlayScene 
+                  handDetection={handDetection}
+                  watchConfig={watchConfig.config}
+                  handedness={handDetection?.handedness || 'Right'}
+                  dynamicScale={dynamicScale}
+                  useAdaptiveLerp={useAdaptiveLerp}
+                  bypassQuaternionSmoothing={bypassQuaternionSmoothing}
+                  onDebugMetrics={setSmoothingMetrics}
+                  onRotationDebug={setRotationDebug}
+                />
+              </Canvas>
+            </div>
+          )}
           
           {/* Camera Label */}
           <div className="absolute top-4 left-4">
@@ -459,6 +578,23 @@ export default function CoordinateDebugPage() {
           <div className="absolute top-4 left-4">
             <Card>
               <CardBody className="py-2 px-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-purple-400">3D Controls</span>
+                  <button
+                    onClick={() => setShow3DControlsPanel(!show3DControlsPanel)}
+                    className="text-slate-400 hover:text-white transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {show3DControlsPanel ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      )}
+                    </svg>
+                  </button>
+                </div>
+                
+                {show3DControlsPanel && (
                 <div className="flex flex-col gap-2">
                   <button
                     onClick={() => setShowWatchModel(!showWatchModel)}
@@ -534,6 +670,7 @@ export default function CoordinateDebugPage() {
                     </div>
                   </button>
                 </div>
+                )}
               </CardBody>
             </Card>
           </div>
@@ -685,6 +822,10 @@ export default function CoordinateDebugPage() {
           <WristSizeVariancePanel
             diagnostics={wristSizeVariance}
             className="absolute top-4 right-4 w-96 max-h-[calc(100vh-100px)] overflow-y-auto"
+          />
+          <MeasurementStabilizationPanel
+            diagnostics={diagnostics?.stabilization ?? null}
+            className="absolute bottom-4 left-4"
           />
         </>
       )}
