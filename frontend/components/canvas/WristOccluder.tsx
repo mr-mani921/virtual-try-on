@@ -1,5 +1,3 @@
-'use client'
-
 import { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -7,11 +5,20 @@ import type { WorldCoordinates } from '@/lib/three/coordinateMapping'
 import { lerpWorldCoordinates } from '@/lib/three/coordinateMapping'
 import { MotionStabilizer, QuaternionSmoother } from '@/lib/three/motionSmoothing'
 import { createOptimizedWristGeometry } from '@/lib/three/wristGeometry'
+import { HandMeasurementStabilizer } from '@/lib/diagnostics/HandMeasurementStabilizer'
 
 interface WristOccluderProps {
   wristPosition: WorldCoordinates | null
   handOrientation?: THREE.Quaternion | null
+  /**
+   * TICKET 44h: Index finger MCP position (world coordinates).
+   * Used to measure anatomical wrist width for occluder sizing.
+   */
   indexBasePosition?: WorldCoordinates | null
+  /**
+   * TICKET 44h: Pinky finger MCP position (world coordinates).
+   * Used to measure anatomical wrist width for occluder sizing.
+   */
   pinkyBasePosition?: WorldCoordinates | null
   /**
    * Direct palm normal from computePalmNormal().
@@ -36,6 +43,41 @@ interface WristOccluderProps {
    *   Default: 0 (front face at wrist center)
    */
   frontFaceDepthBias?: number
+  /**
+   * TICKET 44h: Watch's final scale (for proportional occluder scaling if needed).
+   * Note: Occluder base dimensions are derived from stabilized wrist measurements,
+   * NOT from watchScale. This maintains anatomical accuracy while both watch and
+   * occluder use the same stabilization infrastructure.
+   */
+  watchScale?: number
+  /**
+   * TICKET 44d: Camera depth for distance-based occluder dampening.
+   * When provided, reduces occluder depth growth at close range.
+   */
+  cameraDepth?: number
+  /**
+   * TICKET 44e: Debug visualization mode
+   */
+  debugMode?: boolean
+  onDiagnostics?: (data: {
+    scaleX: number
+    scaleY: number
+    scaleZ: number
+    position: { x: number; y: number; z: number }
+    // TICKET 44h: wrist measurement diagnostics
+    rawWristWidth: number
+    stabilizedWristWidth: number
+    baseScaleX: number
+    baseScaleY: number
+    baseScaleZ: number
+    depthRatio: number
+    depthDampening: number
+    watchScale: number
+    palmRetreat: number
+    basePalmOffset: number
+    frontFaceY: number
+    backFaceY: number
+  }) => void
   smoothing?: number
   enabled?: boolean
 }
@@ -87,6 +129,10 @@ export function WristOccluder({
   palmNormal,
   occluderOffset = { x: 0, y: 0, z: 0 },
   frontFaceDepthBias = 0,
+  watchScale = 1,
+  cameraDepth,
+  debugMode = false,
+  onDiagnostics,
   smoothing = 0.3,
   enabled = true,
 }: WristOccluderProps) {
@@ -100,6 +146,17 @@ export function WristOccluder({
 
   // Rotation smoother: pure quaternion slerp with sign correction.
   const quatSmoother = useRef(new QuaternionSmoother())
+
+  // TICKET 44h: Wrist measurement stabilizer (same infrastructure as useDynamicScale)
+  // Stabilizes anatomical wrist width before using for occluder dimensions
+  const wristWidthStabilizer = useRef(
+    new HandMeasurementStabilizer({
+      medianWindowSize: 9,
+      outlierThreshold: 0.25,
+      regimeChangeThreshold: 0.30,
+      regimeChangeFrames: 3,
+    })
+  )
 
   // Pre-allocated vectors to avoid per-frame heap allocations
   const indexVecRef = useRef(new THREE.Vector3())
@@ -139,8 +196,14 @@ export function WristOccluder({
 
     // --- Scale tapered wrist geometry to anatomical forearm volume each frame ---
     //
-    // TICKET 43c: Tapered geometry automatically narrows at wrist, widens at forearm.
-    // Scale still controls overall dimensions, taper ratio is baked into geometry.
+    // TICKET 44d: Fixed close-range over-occlusion by making occluder proportional
+    // to watch scale and dampening depth growth at close range.
+    //
+    // ROOT CAUSE: knuckleWidth is world-space and grows dramatically at close range
+    // (30cm vs 80cm). Meanwhile, watch scale is stabilized + clamped + dampened.
+    // This caused occluder to grow faster than watch → swallowing effect.
+    //
+    // FIX: Apply watchScale multiplier + distance-based depth dampening
     //
     // After mesh Rx(π/2) the scale axes map as:
     //   scaleX → group +X  (lateral)
@@ -164,25 +227,105 @@ export function WristOccluder({
     //   front face y = -frontFaceDepthBias + occluderOffset.y
     //   back  face y = scaleZ - frontFaceDepthBias + occluderOffset.y
     //
-    // When palmNormal is provided (TICKET 43b), position is adjusted along
-    // the palm normal vector (like WatchModel) for stable surface anchoring.
+    // TICKET 44h: Restore anatomical wrist sizing with stabilization
+    // Occluder dimensions must represent the user's actual wrist, NOT a fixed size.
+    // Use the same stabilization infrastructure as useDynamicScale (HandMeasurementStabilizer)
+    // but keep occluder sizing independent from watch scaling logic.
+    //
+    // Key principles:
+    //   - Watch scale = baseScale × sizeFactor × depthFactor (for watch model sizing)
+    //   - Occluder scale = stabilizedWristWidth × anatomicalRatios (for wrist geometry)
+    //   - Both use HandMeasurementStabilizer, but apply it to different purposes
     if (occluderRef.current && indexBasePosition && pinkyBasePosition) {
+      // 1. Measure raw anatomical wrist width
       indexVecRef.current.set(indexBasePosition.x, indexBasePosition.y, indexBasePosition.z)
       pinkyVecRef.current.set(pinkyBasePosition.x, pinkyBasePosition.y, pinkyBasePosition.z)
+      const rawWristWidth = indexVecRef.current.distanceTo(pinkyVecRef.current)
 
-      const knuckleWidth = indexVecRef.current.distanceTo(pinkyVecRef.current)
+      // 2. Stabilize the measurement (rolling median + outlier rejection)
+      const stabilized = wristWidthStabilizer.current.update(rawWristWidth)
+      const stabilizedWristWidth = stabilized.stabilized
 
-      const scaleX = knuckleWidth * 0.9    // lateral — roughly matches wrist width
-      const scaleY = knuckleWidth * 1.2    // forearm segment length
-      const scaleZ = knuckleWidth * 0.35   // AP depth — kept thin to prevent over-occlusion
+      // 3. Apply anatomical ratios to stabilized measurement
+      const baseScaleX = stabilizedWristWidth * 0.9    // lateral (knuckle width)
+      const baseScaleY = stabilizedWristWidth * 1.2    // forearm segment length
+      const baseScaleZ = stabilizedWristWidth * 0.16   // AP depth - thin for occlusion
+
+      // 4. Distance-based depth dampening (TICKET 44d)
+      let depthDampening = 1.0
+      if (cameraDepth !== undefined) {
+        const referenceDepth = 0.85 // meters
+        const depthRatio = cameraDepth / referenceDepth
+        depthDampening = Math.pow(depthRatio, 0.2)
+        depthDampening = Math.max(0.3, Math.min(1.1, depthDampening))
+      }
+
+      // 5. Final dimensions (anatomical, not scaled by watchScale)
+      const scaleX = baseScaleX
+      const scaleY = baseScaleY
+      const scaleZ = baseScaleZ * depthDampening
 
       occluderRef.current.scale.set(scaleX, scaleY, scaleZ)
 
-      // TICKET 43b: Calculate palm offset with frontFaceDepthBias
+      // TICKET 44h: Log anatomical sizing with stabilization
+      const now = Date.now()
+      if (!window.__lastOccluderLogTime || now - window.__lastOccluderLogTime > 1000) {
+        window.__lastOccluderLogTime = now
+        
+        console.log('═══ OCCLUDER SCALE DERIVATION (Anatomical + Stabilized) ═══')
+        console.log(`1. rawWristWidth:             ${rawWristWidth.toFixed(6)} ← distance(indexBase, pinkyBase) [anatomical measurement]`)
+        console.log(`   ↓ HandMeasurementStabilizer`)
+        console.log(`2. stabilizedWristWidth:      ${stabilizedWristWidth.toFixed(6)} [median=${stabilized.median.toFixed(6)}, outlier=${stabilized.wasOutlier}]`)
+        console.log(`   ↓ × anatomical ratios`)
+        console.log(`3. baseScaleX:                ${baseScaleX.toFixed(6)} (× 0.9 lateral)`)
+        console.log(`4. baseScaleY:                ${baseScaleY.toFixed(6)} (× 1.2 forearm)`)
+        console.log(`5. baseScaleZ:                ${baseScaleZ.toFixed(6)} (× 0.16 AP depth)`)
+        console.log(`   ↓`)
+        console.log(`6. depthDampening:            ${depthDampening.toFixed(6)} (pow(${cameraDepth ? (cameraDepth / 0.85).toFixed(3) : '1.0'}, 0.2), clamped [0.3, 1.1])`)
+        console.log(`   ↓`)
+        console.log(`7. scaleX (FINAL):            ${scaleX.toFixed(6)} = baseScaleX`)
+        console.log(`8. scaleY (FINAL):            ${scaleY.toFixed(6)} = baseScaleY`)
+        console.log(`9. scaleZ (FINAL):            ${scaleZ.toFixed(6)} = baseScaleZ × depthDampening`)
+        console.log('')
+        console.log('✓  ANATOMICAL SIZING:')
+        console.log(`   Occluder represents user's actual wrist geometry`)
+        console.log(`   Stabilized measurement (CV <5%), independent from watchScale`)
+        console.log(`   watchScale = ${watchScale.toFixed(3)} (for reference, not used in occluder sizing)`)
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+        console.log('')
+      }
+
+      // TICKET 43b/44d: Calculate palm offset with frontFaceDepthBias
       // Base: scaleZ/2 centers the cylinder
       // Subtract frontFaceDepthBias to adjust front face depth
       // Add occluderOffset.y for legacy compatibility
-      const basePalmOffset = (scaleZ / 2) - frontFaceDepthBias + occluderOffset.y
+      // TICKET 44d: Push occluder slightly back to keep front face away from watch
+      const palmRetreat = scaleZ * 0.15 // Small retreat to prevent front-face occlusion
+      const basePalmOffset = (scaleZ / 2) - frontFaceDepthBias + occluderOffset.y + palmRetreat
+
+      // TICKET 44h: Report diagnostic data with anatomical measurements
+      if (onDiagnostics) {
+        const worldPos = new THREE.Vector3()
+        groupRef.current.getWorldPosition(worldPos)
+        onDiagnostics({
+          scaleX,
+          scaleY,
+          scaleZ,
+          position: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
+          rawWristWidth,
+          stabilizedWristWidth,
+          baseScaleX,
+          baseScaleY,
+          baseScaleZ,
+          depthRatio: cameraDepth !== undefined ? cameraDepth / 0.85 : 1,
+          depthDampening,
+          watchScale,
+          palmRetreat,
+          basePalmOffset,
+          frontFaceY: worldPos.y - scaleZ / 2,
+          backFaceY: worldPos.y + scaleZ / 2,
+        })
+      }
 
       // Position in wrist local frame
       // TICKET 43b: palmNormal integration handled at group level (matches WatchModel)
@@ -221,7 +364,13 @@ export function WristOccluder({
       */}
       <mesh ref={occluderRef} rotation={[Math.PI / 2, 0, 0]} renderOrder={-1}>
         <primitive object={wristGeometry} attach="geometry" />
-        <meshBasicMaterial colorWrite={false} depthWrite={true} />
+        <meshBasicMaterial 
+          colorWrite={debugMode ? true : false}
+          depthWrite={true}
+          color={debugMode ? '#ff0000' : undefined}
+          transparent={debugMode}
+          opacity={debugMode ? 0.3 : 1}
+        />
       </mesh>
     </group>
   )

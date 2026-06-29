@@ -99,6 +99,14 @@ interface WatchModelProps {
    * VALIDATION: Callback to expose rotation range reset function
    */
   onRotationRangesResetCallback?: (resetFn: () => void) => void
+  /**
+   * TICKET 44e: Occlusion diagnostics callback
+   */
+  onOcclusionDiagnostics?: (data: {
+    scale: number
+    position: { x: number; y: number; z: number }
+    rotation: { x: number; y: number; z: number }
+  }) => void
 }
 
 export function WatchModel({
@@ -122,6 +130,7 @@ export function WatchModel({
   bypassQuaternionSmoothing = false,
   onRotationDebug,
   onRotationRangesResetCallback,
+  onOcclusionDiagnostics,
 }: WatchModelProps) {
   // Use watchConfig values as base, allow prop overrides for backward compatibility
   const effectiveScale = scale ?? watchConfig?.scale ?? 1
@@ -516,6 +525,25 @@ export function WatchModel({
       const s = normalizedScaleRef.current * finalScale
       // Mirror Z (palm normal) for left-hand wearers
       modelRef.current.scale.set(s, s, handedness === 'Left' ? -s : s)
+
+      // TICKET 44e: Report occlusion diagnostics
+      if (onOcclusionDiagnostics) {
+        const worldPos = new THREE.Vector3()
+        const worldQuat = new THREE.Quaternion()
+        groupRef.current.getWorldPosition(worldPos)
+        groupRef.current.getWorldQuaternion(worldQuat)
+        const euler = new THREE.Euler().setFromQuaternion(worldQuat, 'XYZ')
+
+        onOcclusionDiagnostics({
+          scale: finalScale,
+          position: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
+          rotation: { 
+            x: THREE.MathUtils.radToDeg(euler.x), 
+            y: THREE.MathUtils.radToDeg(euler.y), 
+            z: THREE.MathUtils.radToDeg(euler.z) 
+          },
+        })
+      }
     }
   })
 

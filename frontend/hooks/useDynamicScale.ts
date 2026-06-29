@@ -444,10 +444,39 @@ export function useDynamicScale(
       else if (depthCm < 120) distanceCategory = '80-120cm (Far)'
       else distanceCategory = '>120cm (Very Far)'
 
+      // TICKET 44g.1: Single-frame measurement source verification
+      const rawKW = worldKnuckleWidth
+      const stabilizedKW = stabilizationDiagnostics?.stabilized ?? worldKnuckleWidth
+      
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      console.log('🔍 SCALE GROWTH INVESTIGATION')
+      console.log('🔍 TICKET 44g.1 — MEASUREMENT SOURCE VERIFICATION')
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
       console.log(`📏 Distance: ${distanceCategory} (${depthCm}cm)`)
+      console.log('')
+      console.log('═══ MEASUREMENT SOURCES (Same Frame) ═══')
+      console.log(`rawKnuckleWidth:        ${rawKW.toFixed(6)}`)
+      console.log(`stabilizedKnuckleWidth: ${stabilizedKW.toFixed(6)}`)
+      console.log(`Difference:             ${Math.abs(rawKW - stabilizedKW).toFixed(6)} (${(Math.abs(rawKW - stabilizedKW) / rawKW * 100).toFixed(1)}%)`)
+      console.log('')
+      console.log('═══ WATCH SCALE DERIVATION CHAIN ═══')
+      console.log(`1. rawKnuckleWidth:           ${rawKW.toFixed(6)}`)
+      console.log(`   ↓ HandMeasurementStabilizer`)
+      console.log(`2. stabilizedKnuckleWidth:    ${stabilizedKW.toFixed(6)}`)
+      console.log(`   ↓ ÷ referenceSize (${referenceSize.current.toFixed(6)})`)
+      console.log(`3. sizeFactorRaw:             ${sizeFactorRaw.toFixed(6)}`)
+      console.log(`   ↓ clamp(0.85, 1.15)`)
+      console.log(`4. sizeFactorClamped:         ${sizeFactorClamped.toFixed(6)} ${sizeFactorClampedHit ? '🔒 CLAMPED' : ''}`)
+      console.log(`   ↓ lerp(1.0, clamped, 0.4)`)
+      console.log(`5. sizeFactor (applied):      ${sizeFactor.toFixed(6)}`)
+      console.log(`   ↓`)
+      console.log(`6. depthFactor:               ${depthFactor.toFixed(6)} (pow(${depthRatio.toFixed(3)}, 0.85))`)
+      console.log(`   ↓`)
+      console.log(`7. targetScale:               ${targetScale.toFixed(6)} (baseScale × size × depth)`)
+      console.log(`   ↓ RobustEMA smoothing`)
+      console.log(`8. watchScale (FINAL):        ${finalScale.toFixed(6)}`)
+      console.log('')
+      console.log('⚠️  OCCLUDER values must be logged by WristOccluder component')
+      console.log('   (occluderKnuckleWidth, scaleX/Y/Z will appear below)')
       console.log('')
       console.log('📐 Screen-Space (2D Normalized):')
       console.log(`   Knuckle Width: ${screenKnuckleWidth.toFixed(6)}`)

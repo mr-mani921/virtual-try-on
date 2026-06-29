@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { CameraView } from '@/components/camera/CameraView'
@@ -14,12 +14,17 @@ import { HandDebugVisualizer } from '@/components/canvas/HandDebugVisualizer'
 import { WristAnchor } from '@/components/canvas/WristAnchor'
 import { WatchModel } from '@/components/canvas/WatchModel'
 import { WristOccluder } from '@/components/canvas/WristOccluder'
+import { WatchBoundingBox } from '@/components/canvas/WatchBoundingBox'
+import { DebugMarkers } from '@/components/canvas/DebugMarkers'
 import { ModelInspector } from '@/components/canvas/ModelInspector'
 import { WatchControls } from '@/components/ui/WatchControls'
 import { SmoothingDebugPanel } from '@/components/ui/SmoothingDebugPanel'
 import { ScaleDiagnosticsPanel } from '@/components/ui/ScaleDiagnosticsPanel'
 import { WristSizeVariancePanel } from '@/components/ui/WristSizeVariancePanel'
 import { MeasurementStabilizationPanel } from '@/components/ui/MeasurementStabilizationPanel'
+import { OcclusionDiagnosticsPanel } from '@/components/ui/OcclusionDiagnosticsPanel'
+import { OcclusionValidationPanel } from '@/components/ui/OcclusionValidationPanel'
+import { OccluderAuditPanel, type LiveAuditSnapshot } from '@/components/ui/OccluderAuditPanel'
 import { Environment } from '@/components/canvas/Environment'
 import Link from 'next/link'
 
@@ -29,19 +34,27 @@ function CameraOverlayScene({
   watchConfig,
   handedness,
   dynamicScale,
+  wristDepth,
   useAdaptiveLerp,
   bypassQuaternionSmoothing,
+  occlusionDebugMode,
   onDebugMetrics,
   onRotationDebug,
+  onWatchDiagnostics,
+  onOccluderDiagnostics,
 }: {
   handDetection: any
   watchConfig: any
   handedness: 'Left' | 'Right'
   dynamicScale: number
+  wristDepth: number
   useAdaptiveLerp: boolean
   bypassQuaternionSmoothing: boolean
+  occlusionDebugMode: boolean
   onDebugMetrics?: (metrics: any) => void
   onRotationDebug?: (data: any) => void
+  onWatchDiagnostics?: (data: any) => void
+  onOccluderDiagnostics?: (data: any) => void
 }) {
   const { camera } = useThree()
 
@@ -64,8 +77,29 @@ function CameraOverlayScene({
             pinkyBasePosition={mappedData.pinkyBasePosition}
             palmNormal={mappedData.palmNormal}
             occluderOffset={watchConfig.occluderOffset}
+            watchScale={dynamicScale}
+            cameraDepth={wristDepth}
+            debugMode={occlusionDebugMode}
+            onDiagnostics={onOccluderDiagnostics}
             smoothing={watchConfig.smoothing}
           />
+          {occlusionDebugMode && (
+            <>
+              <WatchBoundingBox
+                wristPosition={mappedData.wristPosition}
+                handOrientation={mappedData.handOrientation}
+                scale={dynamicScale}
+                positionOffset={watchConfig.positionOffset}
+                enabled={true}
+              />
+              <DebugMarkers
+                wristPosition={mappedData.wristPosition}
+                palmNormal={mappedData.palmNormal}
+                handOrientation={mappedData.handOrientation}
+                enabled={true}
+              />
+            </>
+          )}
           <WatchModel
             wristPosition={mappedData.wristPosition}
             handOrientation={mappedData.handOrientation}
@@ -83,6 +117,7 @@ function CameraOverlayScene({
             bypassQuaternionSmoothing={bypassQuaternionSmoothing}
             onDebugMetrics={onDebugMetrics}
             onRotationDebug={onRotationDebug}
+            onOcclusionDiagnostics={onWatchDiagnostics}
           />
         </>
       )}
@@ -118,6 +153,7 @@ function CoordinateDebugScene({
   handedness,
   useDynamicScaling,
   dynamicScale,
+  wristDepth,
   useAdaptiveLerp,
   bypassQuaternionSmoothing,
   rotationSmoothing,
@@ -133,6 +169,7 @@ function CoordinateDebugScene({
   handedness: 'Left' | 'Right'
   useDynamicScaling: boolean
   dynamicScale: number
+  wristDepth: number
   useAdaptiveLerp: boolean
   bypassQuaternionSmoothing: boolean
   rotationSmoothing: number
@@ -213,6 +250,8 @@ function CoordinateDebugScene({
             palmNormal={mappedData.palmNormal}
             occluderOffset={watchConfig.occluderOffset}
             frontFaceDepthBias={watchConfig.frontFaceDepthBias}
+            watchScale={useDynamicScaling ? dynamicScale : watchConfig.scale}
+            cameraDepth={wristDepth}
             smoothing={watchConfig.smoothing}
           />
           <WatchModel
@@ -267,6 +306,10 @@ export default function CoordinateDebugPage() {
   const [smoothingMetrics, setSmoothingMetrics] = useState<any>(null)
   const [rotationDebug, setRotationDebug] = useState<any>(null)
   const [rotationRangesResetFn, setRotationRangesResetFn] = useState<(() => void) | null>(null)
+  const [occlusionDebugMode, setOcclusionDebugMode] = useState(false) // TICKET 44e
+  const [occlusionDiagnostics, setOcclusionDiagnostics] = useState<any>(null) // TICKET 44e
+  const watchDiagDataRef = useRef<any>(null) // TICKET 44e - use ref to avoid re-render loops
+  const occluderDiagDataRef = useRef<any>(null) // TICKET 44e - use ref to avoid re-render loops
   const handTrackingStartedRef = useRef(false)
 
   // Watch configuration hook
@@ -296,6 +339,72 @@ export default function CoordinateDebugPage() {
     }
   )
 
+  // TICKET 44e: Collect occlusion diagnostics (throttled to avoid re-render loops)
+  useEffect(() => {
+    if (!occlusionDebugMode) {
+      setOcclusionDiagnostics(null)
+      return
+    }
+
+    // Throttle updates to every 100ms to prevent re-render loops
+    const interval = setInterval(() => {
+      if (handDetection && diagnostics && watchDiagDataRef.current && occluderDiagDataRef.current) {
+        const watchData = watchDiagDataRef.current
+        const occluderData = occluderDiagDataRef.current
+        
+        // Calculate distances between watch and occluder
+        const watchPos = watchData.position
+        const occluderPos = occluderData.position
+
+        // Center-to-center distance
+        const dx = watchPos.x - occluderPos.x
+        const dy = watchPos.y - occluderPos.y
+        const dz = watchPos.z - occluderPos.z
+        const centerDist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+        // Estimate front/back face distances (simplified)
+        const watchRadius = 0.02 * watchData.scale
+        const occluderFrontY = occluderPos.y - (occluderData.scaleZ / 2)
+        const occluderBackY = occluderPos.y + (occluderData.scaleZ / 2)
+        const watchFrontY = watchPos.y - watchRadius
+        const watchBackY = watchPos.y + watchRadius
+
+        const frontDist = watchFrontY - occluderFrontY
+        const backDist = watchBackY - occluderBackY
+
+        // Calculate palm normal vector from landmarks (if available)
+        const palmNormalVec = handDetection.landmarks?.wrist && handDetection.landmarks?.indexBase
+          ? {
+              x: handDetection.landmarks.indexBase.x - handDetection.landmarks.wrist.x,
+              y: handDetection.landmarks.indexBase.y - handDetection.landmarks.wrist.y,
+              z: handDetection.landmarks.indexBase.z - handDetection.landmarks.wrist.z,
+            }
+          : null
+
+        const diagnosticData = {
+          watchScale: watchData.scale,
+          watchFinalScale: watchData.scale * watchConfig.config.scale,
+          watchPosition: watchPos,
+          watchRotation: watchData.rotation,
+          occluderScaleX: occluderData.scaleX,
+          occluderScaleY: occluderData.scaleY,
+          occluderScaleZ: occluderData.scaleZ,
+          occluderPosition: occluderPos,
+          knuckleWidthRaw: diagnostics.stabilization?.raw ?? diagnostics.worldKnuckleWidth ?? 0,
+          knuckleWidthStabilized: diagnostics.stabilization?.stabilized ?? diagnostics.worldKnuckleWidth ?? 0,
+          wristDepth: wristDepth,
+          palmNormal: palmNormalVec,
+          watchToOccluderCenter: centerDist,
+          watchFrontToOccluderFront: frontDist,
+          watchBackToOccluderBack: backDist,
+        }
+        setOcclusionDiagnostics(diagnosticData)
+      }
+    }, 100) // Update every 100ms instead of every frame
+
+    return () => clearInterval(interval)
+  }, [handDetection, diagnostics, dynamicScale, handWidth, wristDepth, watchConfig.config.scale, occlusionDebugMode])
+
   const handleStreamReady = useCallback((stream: MediaStream) => {
     setCameraReady(true)
   }, [])
@@ -314,6 +423,32 @@ export default function CoordinateDebugPage() {
   const toggleCamera = () => {
     handTrackingStartedRef.current = false
   }
+
+  const handleWatchDiagnostics = useCallback((data: any) => {
+    watchDiagDataRef.current = data
+  }, [])
+
+  const handleOccluderDiagnostics = useCallback((data: any) => {
+    occluderDiagDataRef.current = data
+  }, [])
+
+  const getAuditSnapshot = useCallback((): LiveAuditSnapshot => {
+    const oc = occluderDiagDataRef.current
+    const watch = watchDiagDataRef.current
+    return {
+      occluder: oc ?? null,
+      watch: watch ?? null,
+      diagnostics: diagnostics
+        ? {
+            worldKnuckleWidth: diagnostics.worldKnuckleWidth ?? 0,
+            screenKnuckleWidth: diagnostics.screenKnuckleWidth ?? 0,
+            wristDepth: diagnostics.wristDepth ?? wristDepth ?? 0,
+            stabilizationRaw: diagnostics.stabilization?.raw ?? diagnostics.worldKnuckleWidth ?? 0,
+            stabilizationStabilized: diagnostics.stabilization?.stabilized ?? diagnostics.worldKnuckleWidth ?? 0,
+          }
+        : null,
+    }
+  }, [diagnostics, wristDepth])
 
   const handleRotationRangesReset = () => {
     if (rotationRangesResetFn) {
@@ -391,10 +526,14 @@ export default function CoordinateDebugPage() {
                   watchConfig={watchConfig.config}
                   handedness={handDetection?.handedness || 'Right'}
                   dynamicScale={dynamicScale}
+                  wristDepth={wristDepth}
                   useAdaptiveLerp={useAdaptiveLerp}
                   bypassQuaternionSmoothing={bypassQuaternionSmoothing}
+                  occlusionDebugMode={occlusionDebugMode}
                   onDebugMetrics={setSmoothingMetrics}
                   onRotationDebug={setRotationDebug}
+                  onWatchDiagnostics={handleWatchDiagnostics}
+                  onOccluderDiagnostics={handleOccluderDiagnostics}
                 />
               </Canvas>
             </div>
@@ -416,7 +555,7 @@ export default function CoordinateDebugPage() {
           </div>
 
           {/* Camera Controls */}
-          <div className="absolute top-4 right-4 flex flex-col gap-2">
+          <div className="absolute top-4 right-4 flex flex-col gap-2 z-40">
             <Card>
               <CardBody className="py-2 px-3">
                 <div className="flex items-center gap-2">
@@ -458,6 +597,25 @@ export default function CoordinateDebugPage() {
                     </div>
                   </button>
                 </div>
+              </CardBody>
+            </Card>
+
+            {/* TICKET 44e: Occlusion Debug Toggle */}
+            <Card>
+              <CardBody className="py-2 px-3">
+                <button
+                  onClick={() => setOcclusionDebugMode(!occlusionDebugMode)}
+                  className={`w-full flex items-center justify-between gap-3 text-xs font-medium transition-colors ${
+                    occlusionDebugMode 
+                      ? 'text-red-400' 
+                      : 'text-gray-300 hover:text-red-300'
+                  }`}
+                >
+                  <span>{occlusionDebugMode ? '🔍 Debug ON' : '🔍 Occlusion Debug'}</span>
+                  <div className={`w-8 h-4 rounded-full transition-colors ${occlusionDebugMode ? 'bg-red-500' : 'bg-zinc-600'} relative`}>
+                    <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${occlusionDebugMode ? 'translate-x-4' : 'translate-x-0.5'}`}></div>
+                  </div>
+                </button>
               </CardBody>
             </Card>
           </div>
@@ -550,6 +708,7 @@ export default function CoordinateDebugPage() {
               handedness={handDetection?.handedness || 'Right'}
               useDynamicScaling={useDynamicScaling}
               dynamicScale={dynamicScale}
+              wristDepth={wristDepth}
               useAdaptiveLerp={useAdaptiveLerp}
               bypassQuaternionSmoothing={bypassQuaternionSmoothing}
               rotationSmoothing={rotationSmoothing}
@@ -800,6 +959,30 @@ export default function CoordinateDebugPage() {
           </CardBody>
         </Card>
       </div>
+
+      {/* TICKET 44e: Occlusion Diagnostics Panel */}
+      {occlusionDebugMode && occlusionDiagnostics && (
+        <div className="absolute top-48 right-4 z-30 max-w-xs">
+          <OcclusionDiagnosticsPanel diagnostics={occlusionDiagnostics} />
+        </div>
+      )}
+
+      {/* TICKET 44e Part 4: Validation Panel */}
+      {occlusionDebugMode && (
+        <div className="absolute bottom-24 left-4 z-30 max-w-sm">
+          <OcclusionValidationPanel />
+        </div>
+      )}
+
+      {/* TICKET 44f: Occluder Audit Panel */}
+      {occlusionDebugMode && (
+        <div className="absolute bottom-24 right-4 z-30">
+          <OccluderAuditPanel
+            getLiveSnapshot={getAuditSnapshot}
+            hasHandTracking={!!handDetection}
+          />
+        </div>
+      )}
 
       {/* Smoothing Debug Panel */}
       {showWatchModel && (

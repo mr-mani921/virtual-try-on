@@ -24,12 +24,14 @@ function ARScene({
   watchConfig,
   handedness,
   dynamicScale,
+  wristDepth,
 }: {
   handDetection: HandDetection | null
   currentWatch: any
   watchConfig: any
   handedness: 'Left' | 'Right'
   dynamicScale: number
+  wristDepth: number
 }) {
   const { camera } = useThree()
 
@@ -53,6 +55,8 @@ function ARScene({
             palmNormal={mappedData.palmNormal}
             occluderOffset={watchConfig.occluderOffset}
             frontFaceDepthBias={watchConfig.frontFaceDepthBias}
+            watchScale={dynamicScale}
+            cameraDepth={wristDepth}
             smoothing={watchConfig.smoothing}
           />
           <WatchModel
@@ -129,7 +133,7 @@ export default function TryOnPage() {
   })
 
   // Dynamic scaling - Use only default config, not watch-specific values
-  const { dynamicScale } = useDynamicScale(handDetection, {
+  const { dynamicScale, wristDepth } = useDynamicScale(handDetection, {
     baseScale: watchConfig.config.scale,
     minScale: 0.8,
     maxScale: 3.0,
@@ -278,6 +282,7 @@ export default function TryOnPage() {
                 watchConfig={watchConfig.config}
                 handedness={handDetection?.handedness || 'Right'}
                 dynamicScale={dynamicScale}
+                wristDepth={wristDepth}
               />
             </Canvas>
           </div>
