@@ -19,6 +19,12 @@ export interface CoordinateMappingOptions {
   flipHorizontal?: boolean
 }
 
+export interface LandmarkOrientationOptions {
+  videoWidth: number
+  videoHeight: number
+  flipHorizontal?: boolean
+}
+
 /**
  * Convert MediaPipe normalized coordinates (0-1) to screen space pixels
  */
@@ -148,6 +154,104 @@ export function computePalmNormal(
   const v1 = new THREE.Vector3(indexBase.x, indexBase.y, indexBase.z).sub(wristVec)
   const v2 = new THREE.Vector3(pinkyBase.x, pinkyBase.y, pinkyBase.z).sub(wristVec)
   return new THREE.Vector3().crossVectors(v1, v2).normalize()
+}
+
+function landmarkToOrientationVector(
+  landmark: Landmark,
+  options: LandmarkOrientationOptions,
+): THREE.Vector3 {
+  const { videoWidth, videoHeight, flipHorizontal = true } = options
+  const aspect = videoWidth / videoHeight
+  const x = (flipHorizontal ? 1 - landmark.x : landmark.x) - 0.5
+  const y = 0.5 - landmark.y
+
+  return new THREE.Vector3(
+    x * aspect,
+    y,
+    -landmark.z,
+  )
+}
+
+function computeWristQuaternionFromVectors(
+  wristVec: THREE.Vector3,
+  indexVec: THREE.Vector3,
+  middleVec: THREE.Vector3 | null,
+  pinkyVec: THREE.Vector3,
+): THREE.Quaternion {
+  const forwardTarget = middleVec ?? new THREE.Vector3()
+    .addVectors(indexVec, pinkyVec)
+    .multiplyScalar(0.5)
+
+  const Z = new THREE.Vector3().subVectors(forwardTarget, wristVec).normalize()
+  const X = new THREE.Vector3().subVectors(pinkyVec, indexVec).normalize()
+  const Y = new THREE.Vector3().crossVectors(Z, X).normalize()
+
+  X.crossVectors(Y, Z).normalize()
+  Z.crossVectors(X, Y).normalize()
+
+  const matrix = new THREE.Matrix4().makeBasis(X, Y, Z)
+  return new THREE.Quaternion().setFromRotationMatrix(matrix)
+}
+
+/**
+ * Compute palm normal directly in MediaPipe landmark 3D space, converted into
+ * the Three.js overlay camera frame. Unlike landmarkToWorld(), this does not
+ * re-project each landmark through the scene camera, so wrist yaw/side poses
+ * preserve MediaPipe's anatomical depth instead of being pulled toward the
+ * image plane.
+ */
+export function computePalmNormalFromLandmarks(
+  wrist: Landmark,
+  indexBase: Landmark,
+  pinkyBase: Landmark,
+  options: LandmarkOrientationOptions,
+): THREE.Vector3 {
+  const wristVec = landmarkToOrientationVector(wrist, options)
+  const indexVec = landmarkToOrientationVector(indexBase, options)
+  const pinkyVec = landmarkToOrientationVector(pinkyBase, options)
+  const v1 = new THREE.Vector3().subVectors(indexVec, wristVec)
+  const v2 = new THREE.Vector3().subVectors(pinkyVec, wristVec)
+  return new THREE.Vector3().crossVectors(v1, v2).normalize()
+}
+
+/**
+ * Build the wrist quaternion from MediaPipe's own 3D landmark space.
+ *
+ * Position mapping still uses landmarkToWorld(), but orientation should be
+ * anatomical: +Z follows wrist-to-hand, +X follows index-to-pinky, and +Y is
+ * their perpendicular. Keeping this independent from camera unprojection makes
+ * the watch rotate with the wrist instead of staying visually camera-facing.
+ */
+export function computeWristQuaternionFromLandmarks(
+  wrist: Landmark,
+  indexBase: Landmark,
+  pinkyBase: Landmark,
+  options: LandmarkOrientationOptions,
+): THREE.Quaternion {
+  const wristVec = landmarkToOrientationVector(wrist, options)
+  const indexVec = landmarkToOrientationVector(indexBase, options)
+  const pinkyVec = landmarkToOrientationVector(pinkyBase, options)
+
+  return computeWristQuaternionFromVectors(wristVec, indexVec, null, pinkyVec)
+}
+
+/**
+ * V2 landmark-space wrist quaternion using Middle MCP for the forearm/finger
+ * axis while keeping the lateral axis on Index MCP to Pinky MCP.
+ */
+export function computeWristQuaternionV2FromLandmarks(
+  wrist: Landmark,
+  indexBase: Landmark,
+  middleBase: Landmark,
+  pinkyBase: Landmark,
+  options: LandmarkOrientationOptions,
+): THREE.Quaternion {
+  const wristVec = landmarkToOrientationVector(wrist, options)
+  const indexVec = landmarkToOrientationVector(indexBase, options)
+  const middleVec = landmarkToOrientationVector(middleBase, options)
+  const pinkyVec = landmarkToOrientationVector(pinkyBase, options)
+
+  return computeWristQuaternionFromVectors(wristVec, indexVec, middleVec, pinkyVec)
 }
 
 /**

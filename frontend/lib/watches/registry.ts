@@ -17,8 +17,16 @@ export const DEFAULT_WATCH_CONFIG: WatchConfiguration = {
   thumbnail: 'https://png.pngtree.com/png-vector/20230906/ourmid/pngtree-wristwatch-analog-classic-brown-leather-strap-watch-png-image_10001801.png',
   modelUrl: '/models/watch.glb',
   scale: 1.5,
-  rotationOffset: { x: Math.PI / 2, y: 0, z: 0.1 },
-  positionOffset: { x: 0.05, y: 0, z: -0.06 },
+  rotationOffset: {
+    x: Math.PI / 2,
+    y: 0,
+    z: 0
+  },
+  positionOffset: {
+    x: 0.02,
+    y: 0,
+    z: -0.03
+  },
   wristFitBias: 0,
   occluderOffset: { x: 0, y: 0, z: 0 },
   frontFaceDepthBias: 0,

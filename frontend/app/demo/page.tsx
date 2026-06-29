@@ -147,7 +147,7 @@ export default function Home() {
     },
   })
 
-  // Dynamic scaling hook (enabled by default in main AR page)
+  // Dynamic scaling with stabilization (TICKET 44a-44c)
   const { dynamicScale, wristDepth } = useDynamicScale(handDetection, {
     baseScale: watchConfig.config.scale,
     minScale: 0.8,
@@ -155,6 +155,12 @@ export default function Home() {
     smoothing: 0.2,
     enabled: true,
     adaptiveReference: true,
+    // TICKET 44b: Size factor constraints
+    minSizeFactor: 0.85,
+    maxSizeFactor: 1.15,
+    // TICKET 44c: Perspective scale rebalance
+    sizeFactorInfluence: 0.4,
+    depthExponent: 0.85,
   })
 
   const handleStreamReady = useCallback((stream: MediaStream) => {

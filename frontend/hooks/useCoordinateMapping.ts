@@ -5,11 +5,12 @@ import * as THREE from 'three'
 import type { HandDetection } from '@/lib/mediapipe/types'
 import {
   landmarkToWorld,
-  computeWristQuaternion,
-  computeWristQuaternionV2,
-  computePalmNormal,
+  computePalmNormalFromLandmarks,
+  computeWristQuaternionFromLandmarks,
+  computeWristQuaternionV2FromLandmarks,
   type WorldCoordinates,
   type CoordinateMappingOptions,
+  type LandmarkOrientationOptions,
 } from '@/lib/three/coordinateMapping'
 
 interface UseCoordinateMappingOptions {
@@ -71,6 +72,12 @@ export function useCoordinateMapping(
       flipHorizontal,
     }
 
+    const orientationOptions: LandmarkOrientationOptions = {
+      videoWidth,
+      videoHeight,
+      flipHorizontal,
+    }
+
     const wristPosition = landmarkToWorld(
       handDetection.landmarks.wrist,
       mappingOptions
@@ -91,24 +98,31 @@ export function useCoordinateMapping(
       mappingOptions
     )
 
-    // Choose coordinate system: V2 (with Middle MCP) or V1 (palm midpoint)
+    // Choose coordinate system: V2 (with Middle MCP) or V1 (palm midpoint).
+    // Rotation is computed in MediaPipe's landmark-space 3D frame instead of
+    // from camera-unprojected world positions. This keeps side wrist poses
+    // anatomical: the watch face follows the palm/dorsal plane instead of
+    // being biased back toward the camera plane.
     const handOrientation = useV2CoordinateSystem
-      ? computeWristQuaternionV2(
-          wristPosition,
-          indexBasePosition,
-          middleBasePosition,
-          pinkyBasePosition
+      ? computeWristQuaternionV2FromLandmarks(
+          handDetection.landmarks.wrist,
+          handDetection.landmarks.indexBase,
+          handDetection.landmarks.middleBase,
+          handDetection.landmarks.pinkyBase,
+          orientationOptions
         )
-      : computeWristQuaternion(
-          wristPosition,
-          indexBasePosition,
-          pinkyBasePosition
+      : computeWristQuaternionFromLandmarks(
+          handDetection.landmarks.wrist,
+          handDetection.landmarks.indexBase,
+          handDetection.landmarks.pinkyBase,
+          orientationOptions
         )
 
-    const palmNormal = computePalmNormal(
-      wristPosition,
-      indexBasePosition,
-      pinkyBasePosition
+    const palmNormal = computePalmNormalFromLandmarks(
+      handDetection.landmarks.wrist,
+      handDetection.landmarks.indexBase,
+      handDetection.landmarks.pinkyBase,
+      orientationOptions
     )
 
     const allLandmarksWorld = handDetection.landmarks.allLandmarks.map(landmark =>

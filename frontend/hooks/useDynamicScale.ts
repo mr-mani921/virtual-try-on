@@ -19,6 +19,7 @@ declare global {
   interface Window {
     __lastScaleLogTime?: number
     __lastVarianceLogTime?: number
+    __lastOccluderLogTime?: number
   }
 }
 
