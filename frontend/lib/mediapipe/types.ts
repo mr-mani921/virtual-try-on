@@ -8,6 +8,7 @@ export interface HandLandmarks {
   wrist: Landmark
   indexBase: Landmark
   pinkyBase: Landmark
+  middleBase: Landmark
   allLandmarks: Landmark[]
 }
 

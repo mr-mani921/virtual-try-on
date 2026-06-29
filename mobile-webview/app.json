@@ -1,0 +1,80 @@
+{
+  "expo": {
+    "name": "TimeVision",
+    "slug": "timevision-ar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.timevision.ar",
+      "infoPlist": {
+        "NSCameraUsageDescription": "TimeVision needs camera access to enable virtual watch try-on using augmented reality. Your camera feed is processed locally and never stored or transmitted.",
+        "NSMicrophoneUsageDescription": "TimeVision may need microphone access for video recording features.",
+        "NSPhotoLibraryUsageDescription": "TimeVision needs access to save photos of your virtual watch try-on experience.",
+        "NSPhotoLibraryAddUsageDescription": "TimeVision needs access to save photos of your virtual watch try-on experience.",
+        "UIViewControllerBasedStatusBarAppearance": false
+      },
+      "bitcode": false,
+      "requireFullScreen": false
+    },
+    "android": {
+      "package": "com.timevision.ar",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "permissions": [
+        "CAMERA",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "MODIFY_AUDIO_SETTINGS",
+        "RECORD_AUDIO",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "predictiveBackGestureEnabled": false,
+      "userInterfaceStyle": "dark",
+      "softwareKeyboardLayoutMode": "pan",
+      "hardwareAccelerated": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "TimeVision needs camera access to enable AR watch try-on."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0f172a",
+          "image": "./assets/splash.png",
+          "imageWidth": 200
+        }
+      ]
+    ],
+    "experiments": {
+      "tsconfigPaths": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5322e223-0dbc-4d43-bfa1-d45dd722077f"
+      }
+    }
+  }
+}

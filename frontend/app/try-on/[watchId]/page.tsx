@@ -24,12 +24,14 @@ function ARScene({
   watchConfig,
   handedness,
   dynamicScale,
+  wristDepth,
 }: {
   handDetection: HandDetection | null
   currentWatch: any
   watchConfig: any
   handedness: 'Left' | 'Right'
   dynamicScale: number
+  wristDepth: number
 }) {
   const { camera } = useThree()
 
@@ -50,7 +52,11 @@ function ARScene({
             handOrientation={mappedData.handOrientation}
             indexBasePosition={mappedData.indexBasePosition}
             pinkyBasePosition={mappedData.pinkyBasePosition}
+            palmNormal={mappedData.palmNormal}
             occluderOffset={watchConfig.occluderOffset}
+            frontFaceDepthBias={watchConfig.frontFaceDepthBias}
+            watchScale={dynamicScale}
+            cameraDepth={wristDepth}
             smoothing={watchConfig.smoothing}
           />
           <WatchModel
@@ -58,6 +64,7 @@ function ARScene({
             handOrientation={mappedData.handOrientation}
             handedness={handedness}
             smoothing={watchConfig.smoothing}
+            rotationSmoothing={0.6}
             scale={watchConfig.scale}
             dynamicScale={dynamicScale}
             useDynamicScaling={true}
@@ -66,6 +73,7 @@ function ARScene({
             wristFitBias={watchConfig.wristFitBias}
             palmNormal={mappedData.palmNormal}
             showDebugAxis={false}
+            useAdaptiveLerp={false}
             modelPath={currentWatch?.modelUrl}
           />
         </>
@@ -130,14 +138,20 @@ export default function TryOnPage() {
     minTrackingConfidence: 0.5,
   })
 
-  // Dynamic scaling - Use only default config, not watch-specific values
-  const { dynamicScale } = useDynamicScale(handDetection, {
+  // Dynamic scaling with stabilization (TICKET 44a-44c)
+  const { dynamicScale, wristDepth } = useDynamicScale(handDetection, {
     baseScale: watchConfig.config.scale,
     minScale: 0.8,
     maxScale: 3.0,
     smoothing: 0.2,
     enabled: true,
     adaptiveReference: true,
+    // TICKET 44b: Size factor constraints
+    minSizeFactor: 0.85,
+    maxSizeFactor: 1.15,
+    // TICKET 44c: Perspective scale rebalance
+    sizeFactorInfluence: 0.4,
+    depthExponent: 0.85,
   })
 
   // Update tracking state based on hand detection
@@ -280,6 +294,7 @@ export default function TryOnPage() {
                 watchConfig={watchConfig.config}
                 handedness={handDetection?.handedness || 'Right'}
                 dynamicScale={dynamicScale}
+                wristDepth={wristDepth}
               />
             </Canvas>
           </div>

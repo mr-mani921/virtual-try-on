@@ -25,6 +25,7 @@ function ARScene({
   currentWatch,
   handedness,
   dynamicScale,
+  wristDepth,
   useDynamicScaling
 }: { 
   showWristAnchor: boolean
@@ -33,6 +34,7 @@ function ARScene({
   currentWatch: any
   handedness: 'Left' | 'Right'
   dynamicScale: number
+  wristDepth: number
   useDynamicScaling: boolean
 }) {
   const { camera } = useThree()
@@ -66,7 +68,11 @@ function ARScene({
             handOrientation={mappedData.handOrientation}
             indexBasePosition={mappedData.indexBasePosition}
             pinkyBasePosition={mappedData.pinkyBasePosition}
+            palmNormal={mappedData.palmNormal}
             occluderOffset={watchConfig.occluderOffset}
+            frontFaceDepthBias={watchConfig.frontFaceDepthBias}
+            watchScale={useDynamicScaling ? dynamicScale : watchConfig.scale}
+            cameraDepth={wristDepth}
             smoothing={watchConfig.smoothing}
           />
           <WatchModel
@@ -74,6 +80,7 @@ function ARScene({
             handOrientation={mappedData.handOrientation}
             handedness={handedness}
             smoothing={watchConfig.smoothing}
+            rotationSmoothing={0.6}
             scale={watchConfig.scale}
             dynamicScale={dynamicScale}
             useDynamicScaling={useDynamicScaling}
@@ -82,6 +89,7 @@ function ARScene({
             wristFitBias={watchConfig.wristFitBias}
             palmNormal={mappedData.palmNormal}
             showDebugAxis={false}
+            useAdaptiveLerp={false}
             watchConfig={currentWatch}
           />
         </>
@@ -139,14 +147,20 @@ export default function Home() {
     },
   })
 
-  // Dynamic scaling hook (enabled by default in main AR page)
-  const { dynamicScale } = useDynamicScale(handDetection, {
+  // Dynamic scaling with stabilization (TICKET 44a-44c)
+  const { dynamicScale, wristDepth } = useDynamicScale(handDetection, {
     baseScale: watchConfig.config.scale,
     minScale: 0.8,
     maxScale: 3.0,
     smoothing: 0.2,
     enabled: true,
     adaptiveReference: true,
+    // TICKET 44b: Size factor constraints
+    minSizeFactor: 0.85,
+    maxSizeFactor: 1.15,
+    // TICKET 44c: Perspective scale rebalance
+    sizeFactorInfluence: 0.4,
+    depthExponent: 0.85,
   })
 
   const handleStreamReady = useCallback((stream: MediaStream) => {
@@ -257,13 +271,14 @@ export default function Home() {
                   pointerEvents: 'none'
                 }}
               >
-                <ARScene 
-                  showWristAnchor={showWristAnchor} 
+                <ARScene
+                  showWristAnchor={showWristAnchor}
                   showWatchModel={showWatchModel}
                   watchConfig={watchConfig.config}
                   currentWatch={currentWatch}
                   handedness={handDetection?.handedness || 'Right'}
                   dynamicScale={dynamicScale}
+                  wristDepth={wristDepth}
                   useDynamicScaling={true}
                 />
               </Canvas>

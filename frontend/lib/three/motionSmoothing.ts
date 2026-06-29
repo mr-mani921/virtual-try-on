@@ -193,6 +193,129 @@ export class VelocityAdaptiveSmoothing {
 }
 
 /**
+ * Adaptive quaternion smoother with angular velocity-based smoothing factor.
+ * 
+ * Unlike naive position velocity adaptation, this correctly measures ROTATION speed
+ * by calculating the angular distance between quaternions.
+ * 
+ * Algorithm:
+ * 1. Calculate angular velocity from quaternion changes
+ * 2. Map angular velocity to smoothing factor:
+ *    - Slow rotation (< 30°/s): factor = 0.15 (heavy smoothing, reduces jitter)
+ *    - Medium rotation (30-90°/s): factor = 0.25 (balanced)
+ *    - Fast rotation (> 90°/s): factor = 0.45 (light smoothing, responsive)
+ * 3. Apply slerp with adaptive factor
+ * 
+ * Why this works:
+ * - Measures actual rotation speed (not position velocity)
+ * - Heavy smoothing for micro-movements eliminates jitter
+ * - Light smoothing for intentional rotations maintains responsiveness
+ * - No feedback loop issue (measures input rotation, not output)
+ */
+export class AdaptiveQuaternionSmoother {
+  private previous: THREE.Quaternion | null = null
+  private previousTimestamp: number = 0
+  
+  // Pre-allocated quaternions (zero GC)
+  private readonly result = new THREE.Quaternion()
+  private readonly signCorrected = new THREE.Quaternion()
+  
+  // Angular velocity smoothing (EMA)
+  private angularVelocityEMA: number = 0
+  
+  // Tuning parameters (degrees per second)
+  private readonly slowThreshold: number = 30   // Below this: heavy smoothing
+  private readonly fastThreshold: number = 90   // Above this: light smoothing
+  private readonly minFactor: number = 0.15     // Heavy smoothing
+  private readonly maxFactor: number = 0.45     // Light smoothing
+  private readonly defaultFactor: number = 0.25 // Fallback
+
+  constructor() {}
+
+  /**
+   * Advance the smoother by one frame with adaptive smoothing.
+   * 
+   * @param current     Raw target quaternion for this frame
+   * @param timestamp   Current timestamp in milliseconds
+   * @returns           Smoothed quaternion
+   */
+  update(current: THREE.Quaternion, timestamp: number = Date.now()): THREE.Quaternion {
+    // First frame: snap immediately
+    if (this.previous === null) {
+      this.previous = current.clone()
+      this.previousTimestamp = timestamp
+      this.result.copy(current)
+      return this.result
+    }
+
+    // ── Calculate angular velocity ────────────────────────────────────────────
+    const dt = Math.max((timestamp - this.previousTimestamp) / 1000, 0.001) // seconds
+    
+    // Angular distance between previous and current quaternion
+    // Formula: angle = 2 * arccos(|dot(q1, q2)|)
+    const dot = Math.abs(this.previous.dot(current))
+    const clampedDot = Math.min(Math.max(dot, 0), 1) // Clamp to [0, 1] for numerical stability
+    const angularDistance = 2 * Math.acos(clampedDot) // radians
+    const angularVelocity = angularDistance / dt // radians per second
+    const angularVelocityDeg = angularVelocity * (180 / Math.PI) // degrees per second
+    
+    // Smooth angular velocity with EMA (reduces noise)
+    this.angularVelocityEMA = 0.7 * this.angularVelocityEMA + 0.3 * angularVelocityDeg
+
+    // ── Map angular velocity to adaptive factor ───────────────────────────────
+    let factor: number
+    
+    if (this.angularVelocityEMA < this.slowThreshold) {
+      // Slow rotation: heavy smoothing (reduces micro-movement jitter)
+      factor = this.minFactor
+    } else if (this.angularVelocityEMA > this.fastThreshold) {
+      // Fast rotation: light smoothing (maintains responsiveness)
+      factor = this.maxFactor
+    } else {
+      // Medium rotation: linear interpolation
+      const t = (this.angularVelocityEMA - this.slowThreshold) / 
+                (this.fastThreshold - this.slowThreshold)
+      factor = this.minFactor + t * (this.maxFactor - this.minFactor)
+    }
+
+    // ── Sign correction ────────────────────────────────────────────────────────
+    const signDot = this.previous.dot(current)
+    if (signDot < 0) {
+      this.signCorrected.set(-current.x, -current.y, -current.z, -current.w)
+    } else {
+      this.signCorrected.copy(current)
+    }
+
+    // ── Adaptive slerp ─────────────────────────────────────────────────────────
+    this.result.copy(this.previous).slerp(this.signCorrected, factor)
+
+    // Update state
+    this.previous.copy(this.result)
+    this.previousTimestamp = timestamp
+
+    return this.result
+  }
+
+  /**
+   * Get current angular velocity for debugging
+   */
+  getAngularVelocity(): number {
+    return this.angularVelocityEMA
+  }
+
+  /**
+   * Reset to uninitialized state
+   */
+  reset(): void {
+    this.previous = null
+    this.previousTimestamp = 0
+    this.angularVelocityEMA = 0
+    this.result.set(0, 0, 0, 1)
+    this.signCorrected.set(0, 0, 0, 1)
+  }
+}
+
+/**
  * Frame-to-frame quaternion smoother using pure slerp with explicit dot-product
  * sign correction.
  *
@@ -279,6 +402,12 @@ export class MotionStabilizer {
   private rotationFilter: OneEuroFilterQuaternion
   private velocityAdapter: VelocityAdaptiveSmoothing
 
+  // Debug metrics
+  private positionVarianceHistory: number[] = []
+  private velocityHistory: number[] = []
+  private alphaHistory: number[] = []
+  private readonly historySize = 60 // 1 second at 60 FPS
+
   constructor() {
     // Tuned parameters for watch AR tracking
     this.positionFilter = new OneEuroFilter3D(1.5, 0.01)
@@ -295,12 +424,89 @@ export class MotionStabilizer {
   }
 
   getAdaptiveAlpha(position: WorldCoordinates, timestamp?: number): number {
-    return this.velocityAdapter.getAdaptiveAlpha(position, timestamp)
+    const alpha = this.velocityAdapter.getAdaptiveAlpha(position, timestamp)
+    
+    // Track alpha for metrics
+    this.alphaHistory.push(alpha)
+    if (this.alphaHistory.length > this.historySize) {
+      this.alphaHistory.shift()
+    }
+    
+    return alpha
+  }
+
+  /**
+   * Record position variance for debugging
+   * Call this with raw target position to measure jitter
+   */
+  recordPositionVariance(position: WorldCoordinates, previousPosition: WorldCoordinates | null): void {
+    if (!previousPosition) return
+
+    const dx = position.x - previousPosition.x
+    const dy = position.y - previousPosition.y
+    const dz = position.z - previousPosition.z
+    const variance = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    this.positionVarianceHistory.push(variance)
+    if (this.positionVarianceHistory.length > this.historySize) {
+      this.positionVarianceHistory.shift()
+    }
+
+    // Track velocity for correlation analysis
+    this.velocityHistory.push(this.velocityAdapter['velocity'] || 0)
+    if (this.velocityHistory.length > this.historySize) {
+      this.velocityHistory.shift()
+    }
+  }
+
+  /**
+   * Get debug metrics for position smoothing analysis
+   */
+  getDebugMetrics() {
+    if (this.positionVarianceHistory.length === 0) {
+      return null
+    }
+
+    const variance = this.positionVarianceHistory
+    const velocity = this.velocityHistory
+    const alpha = this.alphaHistory
+
+    return {
+      position: {
+        currentVariance: variance[variance.length - 1] || 0,
+        avgVariance: variance.reduce((a, b) => a + b, 0) / variance.length,
+        maxVariance: Math.max(...variance),
+        minVariance: Math.min(...variance),
+        stdDev: this.calculateStdDev(variance),
+      },
+      velocity: {
+        current: velocity[velocity.length - 1] || 0,
+        avg: velocity.reduce((a, b) => a + b, 0) / velocity.length,
+        max: Math.max(...velocity),
+      },
+      alpha: {
+        current: alpha[alpha.length - 1] || 0,
+        avg: alpha.reduce((a, b) => a + b, 0) / alpha.length,
+        min: Math.min(...alpha),
+        max: Math.max(...alpha),
+      },
+      sampleCount: variance.length,
+    }
+  }
+
+  private calculateStdDev(values: number[]): number {
+    const avg = values.reduce((a, b) => a + b, 0) / values.length
+    const squareDiffs = values.map(value => Math.pow(value - avg, 2))
+    const avgSquareDiff = squareDiffs.reduce((a, b) => a + b, 0) / squareDiffs.length
+    return Math.sqrt(avgSquareDiff)
   }
 
   reset() {
     this.positionFilter.reset()
     this.rotationFilter.reset()
     this.velocityAdapter.reset()
+    this.positionVarianceHistory = []
+    this.velocityHistory = []
+    this.alphaHistory = []
   }
 }

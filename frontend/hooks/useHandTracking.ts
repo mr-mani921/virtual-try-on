@@ -109,6 +109,7 @@ export function useHandTracking(
                 wrist: landmarks[HAND_LANDMARKS.WRIST] as Landmark,
                 indexBase: landmarks[HAND_LANDMARKS.INDEX_FINGER_MCP] as Landmark,
                 pinkyBase: landmarks[HAND_LANDMARKS.PINKY_MCP] as Landmark,
+                middleBase: landmarks[HAND_LANDMARKS.MIDDLE_FINGER_MCP] as Landmark,
                 allLandmarks: landmarks as Landmark[],
               },
               handedness: handedness as 'Left' | 'Right',

@@ -3,6 +3,25 @@
 import { useState, useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import type { HandDetection } from '@/lib/mediapipe/types'
+import { 
+  calculateWristSizeCandidates,
+  WristSizeVarianceTracker,
+  type WristSizeDiagnostics as WristVarianceDiagnostics
+} from '@/lib/diagnostics/wristSizeDiagnostics'
+import {
+  HandMeasurementStabilizer,
+  createStabilizationDiagnostics,
+  type MeasurementStabilizationDiagnostics
+} from '@/lib/diagnostics/HandMeasurementStabilizer'
+
+// Extend window for scale logging
+declare global {
+  interface Window {
+    __lastScaleLogTime?: number
+    __lastVarianceLogTime?: number
+    __lastOccluderLogTime?: number
+  }
+}
 
 interface DynamicScaleOptions {
   baseScale?: number
@@ -11,6 +30,12 @@ interface DynamicScaleOptions {
   smoothing?: number
   enabled?: boolean
   adaptiveReference?: boolean
+  // Ticket 44b: Size factor constraints
+  minSizeFactor?: number
+  maxSizeFactor?: number
+  // Ticket 44c: Perspective scale rebalance
+  sizeFactorInfluence?: number
+  depthExponent?: number
 }
 
 interface DynamicScaleResult {
@@ -18,6 +43,48 @@ interface DynamicScaleResult {
   handWidth: number
   wristDepth: number
   isStable: boolean
+}
+
+/**
+ * Extended scale diagnostics for debugging scale growth issues
+ */
+export interface ScaleDiagnostics {
+  // Screen-space measurements (2D normalized coordinates)
+  screenKnuckleWidth: number
+  
+  // World-space measurements (3D world coordinates)
+  worldKnuckleWidth: number
+  worldHandLength: number
+  worldWristSize: number
+  
+  // Depth measurements
+  wristDepth: number
+  referenceDepth: number
+  
+  // Scale factors
+  sizeFactor: number
+  sizeFactorRaw: number
+  sizeFactorClamped: number
+  sizeFactorClampedHit: boolean
+  depthFactor: number
+  depthRatio: number
+  // Ticket 44c: Rebalance diagnostics
+  sizeFactorInfluence: number
+  depthExponent: number
+  sizeContributionPercent: number
+  depthContributionPercent: number
+  
+  // Final scale
+  targetScale: number
+  finalScale: number
+  baseScale: number
+  
+  // Calibration status
+  isCalibrated: boolean
+  calibrationFrames: number
+  
+  // Measurement stabilization (Ticket 44a)
+  stabilization: MeasurementStabilizationDiagnostics | null
 }
 
 /**
@@ -49,6 +116,14 @@ function calculateWristSize(
  */
 function calculateWristDepth(wrist: THREE.Vector3, cameraPosition: THREE.Vector3): number {
   return wrist.distanceTo(cameraPosition)
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
 }
 
 /**
@@ -124,7 +199,10 @@ class RobustEMA {
 export function useDynamicScale(
   handDetection: HandDetection | null,
   options: DynamicScaleOptions = {}
-): DynamicScaleResult {
+): DynamicScaleResult & { 
+  diagnostics: ScaleDiagnostics | null
+  wristSizeVariance: WristVarianceDiagnostics | null
+} {
   const {
     baseScale = 1.5,
     minScale = 0.8,
@@ -132,12 +210,18 @@ export function useDynamicScale(
     smoothing = 0.2,
     enabled = true,
     adaptiveReference = true,
+    minSizeFactor = 0.85,
+    maxSizeFactor = 1.15,
+    sizeFactorInfluence = 0.4,
+    depthExponent = 0.85,
   } = options
 
   const [dynamicScale, setDynamicScale] = useState(baseScale)
   const [handWidth, setHandWidth] = useState(0)
   const [wristDepth, setWristDepth] = useState(0)
   const [isStable, setIsStable] = useState(false)
+  const [diagnostics, setDiagnostics] = useState<ScaleDiagnostics | null>(null)
+  const [wristSizeVariance, setWristSizeVariance] = useState<WristVarianceDiagnostics | null>(null)
 
   // Camera position (assumed at origin for unprojected world coordinates)
   const cameraPosition = useRef(new THREE.Vector3(0, 0, 0))
@@ -146,6 +230,15 @@ export function useDynamicScale(
   const sizeEMA = useRef(new RobustEMA(smoothing))
   const depthEMA = useRef(new RobustEMA(smoothing))
   const scaleEMA = useRef(new RobustEMA(smoothing * 0.5)) // Slower for scale
+
+  // Wrist size variance tracker
+  const varianceTracker = useRef(new WristSizeVarianceTracker())
+
+  // Measurement stabilizer (Ticket 44a)
+  const measurementStabilizer = useRef(new HandMeasurementStabilizer({
+    medianWindowSize: 9,
+    outlierThreshold: 0.25, // 25% max frame-to-frame change
+  }))
 
   // Adaptive reference values (use median of first 30 frames)
   const referenceSize = useRef(0)
@@ -157,8 +250,22 @@ export function useDynamicScale(
   useEffect(() => {
     if (!handDetection || !enabled) {
       setIsStable(false)
+      setDiagnostics(null)
+      setWristSizeVariance(null)
       return
     }
+
+    // Calculate wrist size candidates for variance analysis
+    const candidates = calculateWristSizeCandidates(handDetection)
+    varianceTracker.current.update(candidates)
+
+    // Calculate screen-space knuckle width (in normalized coordinates)
+    const screenIndexBase = { x: handDetection.landmarks.indexBase.x, y: handDetection.landmarks.indexBase.y }
+    const screenPinkyBase = { x: handDetection.landmarks.pinkyBase.x, y: handDetection.landmarks.pinkyBase.y }
+    const screenKnuckleWidth = Math.sqrt(
+      Math.pow(screenIndexBase.x - screenPinkyBase.x, 2) +
+      Math.pow(screenIndexBase.y - screenPinkyBase.y, 2)
+    )
 
     // Convert landmarks to world space vectors
     const wrist = new THREE.Vector3(
@@ -177,8 +284,29 @@ export function useDynamicScale(
       handDetection.landmarks.pinkyBase.z
     )
 
-    // Calculate metrics
-    const currentSize = calculateWristSize(wrist, indexBase, pinkyBase)
+    // Calculate world-space metrics
+    const worldKnuckleWidth = indexBase.distanceTo(pinkyBase)
+    
+    // TICKET 44a.1: Stabilize knuckle width measurement
+    const stabilizedMeasurement = measurementStabilizer.current.update(worldKnuckleWidth)
+
+    // Create stabilization diagnostics
+    const stabilizationDiagnostics = createStabilizationDiagnostics(
+      stabilizedMeasurement,
+      measurementStabilizer.current.getConfig()
+    )
+    
+    const midKnuckle = new THREE.Vector3()
+      .addVectors(indexBase, pinkyBase)
+      .multiplyScalar(0.5)
+    const worldHandLength = wrist.distanceTo(midKnuckle)
+
+    // TICKET 44b: Use stabilized knuckle width for wrist size calculation
+    const stabilizedKnuckleWidth = stabilizedMeasurement.stabilized
+    const currentSize = Math.sqrt(
+      stabilizedKnuckleWidth * stabilizedKnuckleWidth + 
+      worldHandLength * worldHandLength
+    )
     const currentDepth = calculateWristDepth(wrist, cameraPosition.current)
 
     // Smooth measurements
@@ -204,6 +332,30 @@ export function useDynamicScale(
         // During calibration, use base scale
         setDynamicScale(baseScale)
         setIsStable(false)
+        setDiagnostics({
+          screenKnuckleWidth,
+          worldKnuckleWidth,
+          worldHandLength,
+          worldWristSize: currentSize,
+          wristDepth: currentDepth,
+          referenceDepth: 0,
+          sizeFactor: 1,
+          sizeFactorRaw: 1,
+          sizeFactorClamped: 1,
+          sizeFactorClampedHit: false,
+          depthFactor: 1,
+          depthRatio: 1,
+          sizeFactorInfluence,
+          depthExponent,
+          sizeContributionPercent: 0,
+          depthContributionPercent: 0,
+          targetScale: baseScale,
+          finalScale: baseScale,
+          baseScale,
+          isCalibrated: false,
+          calibrationFrames: calibrationSamples.current.length,
+          stabilization: stabilizationDiagnostics,
+        })
         return
       }
     }
@@ -218,17 +370,21 @@ export function useDynamicScale(
     // Calculate scale factors with perspective correction
 
     // 1. Size factor (larger wrist = larger watch)
-    const sizeFactor = smoothedSize / referenceSize.current
+    const sizeFactorRaw = smoothedSize / referenceSize.current
+    const sizeFactorClamped = clamp(sizeFactorRaw, minSizeFactor, maxSizeFactor)
+    const sizeFactorClampedHit = sizeFactorClamped !== sizeFactorRaw
+    // Ticket 44c: Dampen size influence toward neutral (1.0)
+    const sizeFactor = lerp(1.0, sizeFactorClamped, sizeFactorInfluence)
 
-    // 2. Depth factor with inverse square falloff for natural perspective
-    // Objects appear smaller with distance (inverse relationship)
-    // Scale proportionally to (referenceDepth / currentDepth)
+    // 2. Depth factor — stronger perspective response (Ticket 44c)
     const depthRatio = referenceDepth.current / smoothedDepth
-    // Apply square root to moderate the effect
-    const depthFactor = Math.pow(depthRatio, 0.7)
+    const depthFactor = Math.pow(depthRatio, depthExponent)
 
     // Combine factors
     let targetScale = baseScale * sizeFactor * depthFactor
+
+    const sizeContributionPercent = (sizeFactor - 1) * 100
+    const depthContributionPercent = (depthFactor - 1) * 100
 
     // Clamp to range
     targetScale = Math.max(minScale, Math.min(maxScale, targetScale))
@@ -241,7 +397,189 @@ export function useDynamicScale(
     const stable = sizeEMA.current.isStable() && depthEMA.current.isStable() && scaleEMA.current.isStable()
     setIsStable(stable)
 
-  }, [handDetection, baseScale, minScale, maxScale, smoothing, enabled, adaptiveReference])
+    // Update diagnostics
+    setDiagnostics({
+      screenKnuckleWidth,
+      worldKnuckleWidth,
+      worldHandLength,
+      worldWristSize: smoothedSize,
+      wristDepth: smoothedDepth,
+      referenceDepth: referenceDepth.current,
+      sizeFactor,
+      sizeFactorRaw,
+      sizeFactorClamped,
+      sizeFactorClampedHit,
+      depthFactor,
+      depthRatio,
+      sizeFactorInfluence,
+      depthExponent,
+      sizeContributionPercent,
+      depthContributionPercent,
+      targetScale,
+      finalScale,
+      baseScale,
+      isCalibrated: true,
+      calibrationFrames: calibrationSamples.current.length,
+      stabilization: stabilizationDiagnostics,
+    })
+
+    // Update wrist size variance diagnostics
+    const varianceDiagnostics = varianceTracker.current.getDiagnostics(
+      candidates,
+      handDetection,
+      cameraPosition.current
+    )
+    setWristSizeVariance(varianceDiagnostics)
+
+    // Console logging for scale growth investigation
+    // Log every 1 second to avoid spamming the console
+    const now = Date.now()
+    if (!window.__lastScaleLogTime || now - window.__lastScaleLogTime > 1000) {
+      window.__lastScaleLogTime = now
+      
+      const depthCm = Math.round(smoothedDepth * 100)
+      let distanceCategory = 'Unknown'
+      if (depthCm < 40) distanceCategory = '<40cm (Very Close)'
+      else if (depthCm < 60) distanceCategory = '40-60cm (Close)'
+      else if (depthCm < 80) distanceCategory = '60-80cm (Normal)'
+      else if (depthCm < 120) distanceCategory = '80-120cm (Far)'
+      else distanceCategory = '>120cm (Very Far)'
+
+      // TICKET 44g.1: Single-frame measurement source verification
+      const rawKW = worldKnuckleWidth
+      const stabilizedKW = stabilizationDiagnostics?.stabilized ?? worldKnuckleWidth
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔍 TICKET 44g.1 — MEASUREMENT SOURCE VERIFICATION')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log(`📏 Distance: ${distanceCategory} (${depthCm}cm)`)
+      console.log('')
+      console.log('═══ MEASUREMENT SOURCES (Same Frame) ═══')
+      console.log(`rawKnuckleWidth:        ${rawKW.toFixed(6)}`)
+      console.log(`stabilizedKnuckleWidth: ${stabilizedKW.toFixed(6)}`)
+      console.log(`Difference:             ${Math.abs(rawKW - stabilizedKW).toFixed(6)} (${(Math.abs(rawKW - stabilizedKW) / rawKW * 100).toFixed(1)}%)`)
+      console.log('')
+      console.log('═══ WATCH SCALE DERIVATION CHAIN ═══')
+      console.log(`1. rawKnuckleWidth:           ${rawKW.toFixed(6)}`)
+      console.log(`   ↓ HandMeasurementStabilizer`)
+      console.log(`2. stabilizedKnuckleWidth:    ${stabilizedKW.toFixed(6)}`)
+      console.log(`   ↓ ÷ referenceSize (${referenceSize.current.toFixed(6)})`)
+      console.log(`3. sizeFactorRaw:             ${sizeFactorRaw.toFixed(6)}`)
+      console.log(`   ↓ clamp(0.85, 1.15)`)
+      console.log(`4. sizeFactorClamped:         ${sizeFactorClamped.toFixed(6)} ${sizeFactorClampedHit ? '🔒 CLAMPED' : ''}`)
+      console.log(`   ↓ lerp(1.0, clamped, 0.4)`)
+      console.log(`5. sizeFactor (applied):      ${sizeFactor.toFixed(6)}`)
+      console.log(`   ↓`)
+      console.log(`6. depthFactor:               ${depthFactor.toFixed(6)} (pow(${depthRatio.toFixed(3)}, 0.85))`)
+      console.log(`   ↓`)
+      console.log(`7. targetScale:               ${targetScale.toFixed(6)} (baseScale × size × depth)`)
+      console.log(`   ↓ RobustEMA smoothing`)
+      console.log(`8. watchScale (FINAL):        ${finalScale.toFixed(6)}`)
+      console.log('')
+      console.log('⚠️  OCCLUDER values must be logged by WristOccluder component')
+      console.log('   (occluderKnuckleWidth, scaleX/Y/Z will appear below)')
+      console.log('')
+      console.log('📐 Screen-Space (2D Normalized):')
+      console.log(`   Knuckle Width: ${screenKnuckleWidth.toFixed(6)}`)
+      console.log('')
+      console.log('🌍 World-Space (3D Reconstructed):')
+      console.log(`   Knuckle Width: ${worldKnuckleWidth.toFixed(6)}`)
+      console.log(`   Hand Length:   ${worldHandLength.toFixed(6)}`)
+      console.log(`   Wrist Size:    ${smoothedSize.toFixed(6)}`)
+      console.log('')
+      console.log('📏 Depth Measurements:')
+      console.log(`   Current Depth:   ${smoothedDepth.toFixed(6)} (${depthCm}cm)`)
+      console.log(`   Reference Depth: ${referenceDepth.current.toFixed(6)}`)
+      console.log(`   Depth Ratio:     ${depthRatio.toFixed(6)}`)
+      console.log('')
+      console.log('⚖️  Scale Factors (Ticket 44c Rebalance):')
+      console.log(`   Size Factor (measured): ${sizeFactorRaw.toFixed(6)} (${((sizeFactorRaw - 1) * 100).toFixed(1)}%)`)
+      console.log(`   Size Factor (clamped):  ${sizeFactorClamped.toFixed(6)} (${((sizeFactorClamped - 1) * 100).toFixed(1)}%)${sizeFactorClampedHit ? ' 🔒' : ''}`)
+      console.log(`   Size Factor (applied):  ${sizeFactor.toFixed(6)} (${sizeContributionPercent.toFixed(1)}%) @ ${(sizeFactorInfluence * 100).toFixed(0)}% influence`)
+      console.log(`   Depth Factor:           ${depthFactor.toFixed(6)} (${depthContributionPercent.toFixed(1)}%) @ exp ${depthExponent}`)
+      console.log('')
+      console.log('📊 Factor Contribution Audit:')
+      console.log(`   Size contrib:  ${sizeContributionPercent.toFixed(1)}%`)
+      console.log(`   Depth contrib: ${depthContributionPercent.toFixed(1)}%`)
+      console.log(`   Net vs base:   ${((sizeFactor * depthFactor - 1) * 100).toFixed(1)}% (before final clamp/smooth)`)
+      if (sizeFactorClampedHit) {
+        console.log(`   Clamp range:   ${minSizeFactor.toFixed(2)} - ${maxSizeFactor.toFixed(2)}`)
+      }
+      console.log('')
+      console.log('🎯 Final Scale:')
+      console.log(`   Base Scale:   ${baseScale.toFixed(6)}`)
+      console.log(`   Target Scale: ${targetScale.toFixed(6)}`)
+      console.log(`   Final Scale:  ${finalScale.toFixed(6)}`)
+      console.log('')
+      console.log('⚠️  Scale Growth Analysis:')
+      console.log(`   Scale vs Base: ${((finalScale / baseScale) * 100).toFixed(1)}% ${finalScale > baseScale * 1.2 ? '⚠️ HIGH INFLATION!' : ''}`)
+      console.log(`   Depth contrib: ${depthContributionPercent.toFixed(1)}%`)
+      console.log(`   Size contrib:  ${sizeContributionPercent.toFixed(1)}%`)
+      console.log('')
+      const driftAbs = Math.abs(stabilizationDiagnostics.differencePercent)
+      const driftStatus =
+        stabilizationDiagnostics.wasOutlier
+          ? '🚫 OUTLIER REJECTED'
+          : stabilizationDiagnostics.bufferReset
+            ? '🔄 REGIME RESET'
+            : driftAbs <= 10
+              ? '✅'
+              : driftAbs <= 30
+                ? '⚠️ DRIFTING'
+                : '❌ HIGH DRIFT'
+
+      console.log('📊 MEASUREMENT STABILIZATION (Ticket 44a.1):')
+      console.log(`   Raw Knuckle Width:        ${stabilizationDiagnostics.raw.toFixed(6)}`)
+      console.log(`   Median (pre-frame):       ${stabilizationDiagnostics.median.toFixed(6)}`)
+      console.log(`   Stabilized Knuckle Width: ${stabilizationDiagnostics.stabilized.toFixed(6)}`)
+      console.log(`   Raw vs Stabilized:        ${stabilizationDiagnostics.differencePercent.toFixed(2)}% ${driftStatus}`)
+      console.log(`   Deviation from Median:    ${stabilizationDiagnostics.deviationFromMedian.toFixed(2)}% (threshold: ${stabilizationDiagnostics.outlierThreshold.toFixed(0)}%)`)
+      console.log(`   Regime Counter:           ${stabilizationDiagnostics.regimeChangeCounter}/${stabilizationDiagnostics.regimeChangeFrames} (>${stabilizationDiagnostics.regimeChangeThreshold.toFixed(0)}% drift)`)
+      console.log(`   Buffer:                   ${stabilizationDiagnostics.bufferSize}/${stabilizationDiagnostics.windowSize} | Resets: ${stabilizationDiagnostics.bufferResetCount}`)
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    }
+
+    // Wrist size variance logging (every 2 seconds, only if we have enough samples)
+    if (varianceDiagnostics.sampleCount >= 30 && (!window.__lastVarianceLogTime || now - window.__lastVarianceLogTime > 2000)) {
+      window.__lastVarianceLogTime = now
+
+      // Rank measurements by stability
+      const measurements = [
+        { name: 'Index↔Pinky MCP (CURRENT)', variance: varianceDiagnostics.variance.indexToPinkyMCP },
+        { name: 'Wrist→Index MCP', variance: varianceDiagnostics.variance.wristToIndexMCP },
+        { name: 'Wrist→Pinky MCP', variance: varianceDiagnostics.variance.wristToPinkyMCP },
+        { name: 'Wrist→Middle MCP', variance: varianceDiagnostics.variance.wristToMiddleMCP },
+        { name: 'Avg Wrist→Knuckle', variance: varianceDiagnostics.variance.avgWristToKnuckle },
+        { name: 'Wrist Circumference', variance: varianceDiagnostics.variance.wristCircumference },
+        { name: 'Combined Metric', variance: varianceDiagnostics.variance.combinedSizeMetric },
+      ].sort((a, b) => a.variance.coefficientOfVariation - b.variance.coefficientOfVariation)
+
+      console.log('┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓')
+      console.log('┃  WRIST SIZE MEASUREMENT VARIANCE ANALYSIS  ┃')
+      console.log('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛')
+      console.log(`📊 Samples: ${varianceDiagnostics.sampleCount}`)
+      console.log(`📍 Hand State: ${varianceDiagnostics.handState.palmOrientation.toUpperCase()} | Depth: ${Math.round(varianceDiagnostics.handState.wristDepth * 100)}cm | Spread: ${varianceDiagnostics.handState.fingerSpread.toFixed(1)}°`)
+      console.log('')
+      console.log('🏆 STABILITY RANKING (Lower CV% = More Stable):')
+      console.log('─────────────────────────────────────────────')
+      
+      measurements.forEach((m, idx) => {
+        const cv = m.variance.coefficientOfVariation
+        const emoji = idx === 0 ? '✅' : idx === measurements.length - 1 ? '❌' : '  '
+        const color = cv < 5 ? '🟢' : cv < 10 ? '🟡' : '🔴'
+        console.log(`${emoji} #${idx + 1} ${color} ${m.name}`)
+        console.log(`      CV: ${cv.toFixed(2)}% | Range: ${m.variance.rangePercent.toFixed(1)}% | Mean: ${m.variance.mean.toFixed(4)}`)
+      })
+      
+      console.log('')
+      console.log(`💡 RECOMMENDATION: Use "${measurements[0].name}"`)
+      console.log(`   Current unstable measurement has ${measurements.find(m => m.name.includes('CURRENT'))?.variance.coefficientOfVariation.toFixed(2)}% CV`)
+      console.log(`   Best measurement has ${measurements[0].variance.coefficientOfVariation.toFixed(2)}% CV`)
+      console.log(`   Improvement: ${(100 - (measurements[0].variance.coefficientOfVariation / measurements.find(m => m.name.includes('CURRENT'))!.variance.coefficientOfVariation) * 100).toFixed(1)}%`)
+      console.log('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛')
+    }
+
+  }, [handDetection, baseScale, minScale, maxScale, smoothing, enabled, adaptiveReference, minSizeFactor, maxSizeFactor, sizeFactorInfluence, depthExponent])
 
   // Reset when hand is lost
   useEffect(() => {
@@ -251,8 +589,12 @@ export function useDynamicScale(
       sizeEMA.current.reset()
       depthEMA.current.reset()
       scaleEMA.current.reset()
+      varianceTracker.current.reset()
+      measurementStabilizer.current.reset()
       setDynamicScale(baseScale)
       setIsStable(false)
+      setDiagnostics(null)
+      setWristSizeVariance(null)
     }
   }, [handDetection, baseScale])
 
@@ -261,5 +603,7 @@ export function useDynamicScale(
     handWidth,
     wristDepth,
     isStable,
+    diagnostics,
+    wristSizeVariance,
   }
 }
